@@ -955,24 +955,47 @@ func TestRenderClusterAppsGatewayDependsOnEnvoyGatewayAPIBase(t *testing.T) {
 	}
 }
 
-func TestGatewayClusterIssuerIsLetsencryptDefault(t *testing.T) {
+func TestGeneratedGatewayAndHarborIssuerReferencesResolveToRackspaceCA(t *testing.T) {
+	dst := t.TempDir()
 	cfg := newDefault("mycluster")
+	cfg.OpenCenter.GitOps.Repository.LocalDir = dst
 	cfg.OpenCenter.Cluster.ClusterFQDN = "mycluster.dev1.sjc3.k8s.opencenter.cloud"
+	harbor := cfg.OpenCenter.Services["harbor"].(*configservices.HarborConfig)
+	harbor.Enabled = true
+	harbor.EmitCertificate = true
+
+	if err := RenderClusterApps(cfg); err != nil {
+		t.Fatalf("RenderClusterApps() error = %v", err)
+	}
+
+	clusterRoot := filepath.Join(dst, "applications", "overlays", cfg.ClusterName())
+	issuer := mustReadFile(t, filepath.Join(clusterRoot, "services", "cert-manager", "rackspace-ca-issuer.yaml"))
+	if !strings.Contains(issuer, "kind: ClusterIssuer") || !strings.Contains(issuer, "name: rackspace-ca") {
+		t.Fatalf("expected the generated rackspace-ca ClusterIssuer. Got:\n%s", issuer)
+	}
+
+	gateway := mustReadFile(t, filepath.Join(clusterRoot, "services", "gateway", "gateway.yaml"))
+	if !strings.Contains(gateway, "cert-manager.io/cluster-issuer: rackspace-ca") {
+		t.Fatalf("gateway must reference the generated rackspace-ca issuer. Got:\n%s", gateway)
+	}
+
+	harborCertificate := mustReadFile(t, filepath.Join(clusterRoot, "services", "harbor", "certificate.yaml"))
+	if !strings.Contains(harborCertificate, "issuerRef:\n    name: rackspace-ca\n    kind: ClusterIssuer") {
+		t.Fatalf("Harbor certificate must reference the generated rackspace-ca issuer. Got:\n%s", harborCertificate)
+	}
+}
+
+func TestGatewayDefaultIssuerOverridesGeneratedDefault(t *testing.T) {
+	cfg := newDefault("mycluster")
+	gatewayConfig := cfg.OpenCenter.Services["gateway"].(*configservices.GatewayConfig)
+	gatewayConfig.DefaultIssuer = "customer-managed-issuer"
 
 	files, err := gatewayOverlayFilesRenderer(cfg)
 	if err != nil {
 		t.Fatalf("gatewayOverlayFilesRenderer() error = %v", err)
 	}
-
-	gateway := files["gateway.yaml"]
-
-	// The cluster-issuer annotation must reference letsencrypt-default,
-	// not letsencrypt-<cluster-name>.
-	if strings.Contains(gateway, "cluster-issuer: letsencrypt-mycluster") {
-		t.Fatalf("rmpk-gateway cluster-issuer should be 'letsencrypt-default', not 'letsencrypt-mycluster'.\nGot:\n%s", gateway)
-	}
-	if !strings.Contains(gateway, "cluster-issuer: letsencrypt-default") {
-		t.Fatalf("expected cluster-issuer annotation 'letsencrypt-default' in rmpk-gateway.\nGot:\n%s", gateway)
+	if !strings.Contains(files["gateway.yaml"], "cert-manager.io/cluster-issuer: customer-managed-issuer") {
+		t.Fatalf("gateway must honor gateway.default_issuer. Got:\n%s", files["gateway.yaml"])
 	}
 }
 
