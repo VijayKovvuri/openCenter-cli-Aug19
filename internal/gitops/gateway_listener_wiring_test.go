@@ -73,6 +73,22 @@ func TestGeneratedHTTPRouteSectionNamesResolveToGatewayListeners(t *testing.T) {
 			ref.file, ref.route, ref.sectionName, ref.gateway, sortedSet(known))
 	}
 
+	requiredMonitoringRoutes := map[string]string{
+		"prometheus-gateway-route":   "prometheus-https",
+		"alertmanager-gateway-route": "alertmanager-https",
+		"grafana-gateway-route":      "grafana-https",
+	}
+	seenMonitoringRoutes := make(map[string]string, len(requiredMonitoringRoutes))
+	for _, ref := range refs {
+		if _, required := requiredMonitoringRoutes[ref.route]; required {
+			seenMonitoringRoutes[ref.route] = ref.sectionName
+		}
+	}
+	for route, sectionName := range requiredMonitoringRoutes {
+		require.Equalf(t, sectionName, seenMonitoringRoutes[route],
+			"Gateway listener %q must have its required monitoring HTTPRoute %q", sectionName, route)
+	}
+
 	t.Logf("checked %d HTTPRoute parentRef(s) against %d Gateway(s)", len(refs), len(listeners))
 }
 

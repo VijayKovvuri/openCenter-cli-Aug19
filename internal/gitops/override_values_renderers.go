@@ -644,7 +644,7 @@ const kubePrometheusStackTemplate = `---
 {{- $webhookURL := $kps.WebhookURL | trim -}}
 alertmanager:
   alertmanagerSpec:
-    externalUrl: https://{{ (index .OpenCenter.Services "kube-prometheus-stack").Hostname | default (printf "alertmanager.%s" .OpenCenter.Cluster.ClusterFQDN) }}
+    externalUrl: https://{{ $kps.AlertmanagerHostname | default (printf "alertmanager.%s" .OpenCenter.Cluster.ClusterFQDN) }}
     # Pin the PVC storage class (see prometheusSpec.storageSpec note).
     storage:
       volumeClaimTemplate:
@@ -695,7 +695,7 @@ alertmanager:
             send_resolved: true
 prometheus:
   prometheusSpec:
-    externalUrl: https://{{ (index .OpenCenter.Services "kube-prometheus-stack").Hostname | default (printf "prometheus.%s" .OpenCenter.Cluster.ClusterFQDN) }}
+    externalUrl: https://{{ $kps.PrometheusHostname | default (printf "prometheus.%s" .OpenCenter.Cluster.ClusterFQDN) }}
     externalLabels:
       cluster: {{ .OpenCenter.Meta.Name }}
       region: {{ .OpenCenter.Meta.Region }}

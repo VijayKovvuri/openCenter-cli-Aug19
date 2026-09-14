@@ -8,7 +8,11 @@ import (
 type PrometheusStackConfig struct {
 	BaseConfig `yaml:",inline"`
 
-	Hostname string `yaml:"hostname,omitempty" json:"hostname,omitempty" jsonschema:"description=Grafana external hostname"`
+	// Hostname is retained as the Grafana hostname for backward compatibility.
+	Hostname             string `yaml:"hostname,omitempty" json:"hostname,omitempty" jsonschema:"description=Deprecated Grafana external hostname; use grafana_hostname"`
+	PrometheusHostname   string `yaml:"prometheus_hostname,omitempty" json:"prometheus_hostname,omitempty" jsonschema:"description=Prometheus external hostname"`
+	AlertmanagerHostname string `yaml:"alertmanager_hostname,omitempty" json:"alertmanager_hostname,omitempty" jsonschema:"description=Alertmanager external hostname"`
+	GrafanaHostname      string `yaml:"grafana_hostname,omitempty" json:"grafana_hostname,omitempty" jsonschema:"description=Grafana external hostname"`
 
 	// Storage per component
 	GrafanaVolumeSize        int    `yaml:"grafana_volume_size,omitempty" json:"grafana_volume_size,omitempty" jsonschema:"description=Grafana persistent volume size in GB"`

@@ -119,8 +119,9 @@ func newBuiltInRenderCatalog() RenderCatalog {
 		{
 			ServiceName: "kube-prometheus-stack", DefaultNamespace: "observability", HasOverrideValues: true,
 			SourceName: "opencenter-observability", SourceGroup: "observability", BasePath: "applications/base/services/observability/kube-prometheus-stack",
-			ExtraDependencies: []string{"observability-namespace", "kube-prometheus-stack-override"}, OverrideDependsOn: []string{"sources"},
-			OverrideValuesRenderer: templateRenderer(kubePrometheusStackTemplate),
+			ExtraDependencies: []string{"observability-namespace", "kube-prometheus-stack-override"}, OverrideDependsOn: []string{"sources", "envoy-gateway-api-base"},
+			GeneratedResourceFiles: []string{"prometheus-http-route.yaml", "alertmanager-http-route.yaml", "grafana-http-route.yaml"},
+			OverrideValuesRenderer: templateRenderer(kubePrometheusStackTemplate), OverlayFilesRenderer: kubePrometheusStackOverlayFilesRenderer,
 		},
 		{
 			ServiceName: "kyverno", DefaultNamespace: "kyverno",

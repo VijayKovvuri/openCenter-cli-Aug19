@@ -39,6 +39,23 @@ func gatewayOverlayFilesRenderer(cfg v2.Config) (map[string]string, error) {
 	return files, nil
 }
 
+func kubePrometheusStackOverlayFilesRenderer(cfg v2.Config) (map[string]string, error) {
+	templates := map[string]string{
+		"prometheus-http-route.yaml":   prometheusHTTPRouteTemplate,
+		"alertmanager-http-route.yaml": alertmanagerHTTPRouteTemplate,
+		"grafana-http-route.yaml":      grafanaHTTPRouteTemplate,
+	}
+	files := make(map[string]string, len(templates))
+	for name, tmpl := range templates {
+		content, err := renderOverlayTemplate(tmpl, cfg)
+		if err != nil {
+			return nil, err
+		}
+		files[name] = content
+	}
+	return files, nil
+}
+
 func longhornOverlayFilesRenderer(cfg v2.Config) (map[string]string, error) {
 	files := map[string]string{}
 
@@ -164,7 +181,7 @@ spec:
     - name: prometheus-https
       port: 443
       protocol: HTTPS
-      hostname: {{ (index .OpenCenter.Services "kube-prometheus-stack").Hostname | default (printf "prometheus.%s" .OpenCenter.Cluster.ClusterFQDN) }}
+      hostname: {{ (index .OpenCenter.Services "kube-prometheus-stack").PrometheusHostname | default (printf "prometheus.%s" .OpenCenter.Cluster.ClusterFQDN) }}
       allowedRoutes:
         namespaces:
           from: All
@@ -177,7 +194,7 @@ spec:
     - name: alertmanager-https
       port: 443
       protocol: HTTPS
-      hostname: {{ (index .OpenCenter.Services "kube-prometheus-stack").Hostname | default (printf "alertmanager.%s" .OpenCenter.Cluster.ClusterFQDN) }}
+      hostname: {{ (index .OpenCenter.Services "kube-prometheus-stack").AlertmanagerHostname | default (printf "alertmanager.%s" .OpenCenter.Cluster.ClusterFQDN) }}
       allowedRoutes:
         namespaces:
           from: All
@@ -190,7 +207,7 @@ spec:
     - name: grafana-https
       port: 443
       protocol: HTTPS
-      hostname: {{ (index .OpenCenter.Services "kube-prometheus-stack").Hostname | default (printf "grafana.%s" .OpenCenter.Cluster.ClusterFQDN) }}
+      hostname: {{ (index .OpenCenter.Services "kube-prometheus-stack").GrafanaHostname | default (index .OpenCenter.Services "kube-prometheus-stack").Hostname | default (printf "grafana.%s" .OpenCenter.Cluster.ClusterFQDN) }}
       allowedRoutes:
         namespaces:
           from: All
@@ -260,4 +277,85 @@ spec:
       - path:
           type: PathPrefix
           value: /
+`
+
+const prometheusHTTPRouteTemplate = `---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: prometheus-gateway-route
+  namespace: observability
+spec:
+  hostnames:
+    - {{ (index .OpenCenter.Services "kube-prometheus-stack").PrometheusHostname | default (printf "prometheus.%s" .OpenCenter.Cluster.ClusterFQDN) | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: rmpk-gateway
+      namespace: rackspace-system
+      sectionName: prometheus-https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: kube-prometheus-stack-prometheus
+          port: 9090
+`
+
+const alertmanagerHTTPRouteTemplate = `---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: alertmanager-gateway-route
+  namespace: observability
+spec:
+  hostnames:
+    - {{ (index .OpenCenter.Services "kube-prometheus-stack").AlertmanagerHostname | default (printf "alertmanager.%s" .OpenCenter.Cluster.ClusterFQDN) | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: rmpk-gateway
+      namespace: rackspace-system
+      sectionName: alertmanager-https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: kube-prometheus-stack-alertmanager
+          port: 9093
+`
+
+const grafanaHTTPRouteTemplate = `---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana-gateway-route
+  namespace: observability
+spec:
+  hostnames:
+    - {{ (index .OpenCenter.Services "kube-prometheus-stack").GrafanaHostname | default (index .OpenCenter.Services "kube-prometheus-stack").Hostname | default (printf "grafana.%s" .OpenCenter.Cluster.ClusterFQDN) | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: rmpk-gateway
+      namespace: rackspace-system
+      sectionName: grafana-https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: kube-prometheus-stack-grafana
+          port: 80
 `
