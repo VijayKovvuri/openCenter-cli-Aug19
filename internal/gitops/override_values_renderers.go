@@ -641,6 +641,7 @@ exporter:
 const kubePrometheusStackTemplate = `---
 {{- $kps := index .OpenCenter.Services "kube-prometheus-stack" -}}
 {{- $defaultSC := .OpenCenter.Infrastructure.Storage.DefaultStorageClass -}}
+{{- $webhookURL := $kps.WebhookURL | trim -}}
 alertmanager:
   alertmanagerSpec:
     externalUrl: https://{{ (index .OpenCenter.Services "kube-prometheus-stack").Hostname | default (printf "alertmanager.%s" .OpenCenter.Cluster.ClusterFQDN) }}
@@ -664,6 +665,7 @@ alertmanager:
         equal: [namespace]
       - target_matchers: [alertname = InfoInhibitor]
     route:
+      receiver: "null"
       group_by: [namespace, alertname]
       group_wait: 30s
       group_interval: 60s
@@ -671,18 +673,22 @@ alertmanager:
       routes:
         - receiver: "null"
           matchers: [alertname = "Watchdog"]
+{{- if $webhookURL }}
         - receiver: warning_alerts_receiver
           continue: false
           matchers: [severity =~ "warning"]
+{{- end }}
         - receiver: alert_proxy_receiver
           continue: false
           matchers: [severity =~ "critical"]
     receivers:
       - name: "null"
+{{- if $webhookURL }}
       - name: warning_alerts_receiver
         msteamsv2_configs:
           - send_resolved: true
-            webhook_url: {{ (index .OpenCenter.Services "kube-prometheus-stack").WebhookURL }}
+            webhook_url: {{ $webhookURL | quote }}
+{{- end }}
       - name: alert_proxy_receiver
         webhook_configs:
           - url: http://rackspace-alert-proxy.rackspace.svc.cluster.local/alert/process

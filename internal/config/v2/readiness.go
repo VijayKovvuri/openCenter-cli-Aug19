@@ -579,6 +579,7 @@ func (r *readinessBuilder) validateServiceSecrets(cfg *Config) {
 	}
 	if serviceEnabled(cfg, "kube-prometheus-stack") {
 		r.requireSecret("secrets.grafana.admin_password", cfg.Secrets.Grafana.AdminPassword, "Grafana admin password is required when kube-prometheus-stack is enabled.")
+		r.validateKubePrometheusStackWebhookURL(cfg)
 	}
 	r.validateCertManagerSecrets(cfg)
 	r.validateEtcdBackupSecrets(cfg)
@@ -600,6 +601,27 @@ func (r *readinessBuilder) validateServiceSecrets(cfg *Config) {
 		r.requireSecret("secrets.vsphere_csi.vcenter_host", cfg.Secrets.VSphereCsi.VCenterHost, "vSphere CSI vCenter host is required when vSphere CSI is enabled.")
 		r.requireSecret("secrets.vsphere_csi.username", cfg.Secrets.VSphereCsi.Username, "vSphere CSI username is required when vSphere CSI is enabled.")
 		r.requireSecret("secrets.vsphere_csi.password", cfg.Secrets.VSphereCsi.Password, "vSphere CSI password is required when vSphere CSI is enabled.")
+	}
+}
+
+func (r *readinessBuilder) validateKubePrometheusStackWebhookURL(cfg *Config) {
+	stack, _ := configuredService(cfg, "kube-prometheus-stack").(*services.PrometheusStackConfig)
+	if stack == nil {
+		return
+	}
+
+	webhookURL := strings.TrimSpace(stack.WebhookURL)
+	if webhookURL == "" {
+		return
+	}
+	parsed, err := url.Parse(webhookURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		r.addError(
+			CategoryServices,
+			"opencenter.services.kube-prometheus-stack.webhook_url",
+			"kube-prometheus-stack webhook_url must be an absolute HTTPS URL when configured.",
+			"Set a complete https:// webhook URL or leave webhook_url empty to disable Microsoft Teams notifications.",
+		)
 	}
 }
 
