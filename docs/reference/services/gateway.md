@@ -1,18 +1,18 @@
 ---
 id: service-gateway
-title: "Gateway (Envoy)"
+title: "Gateway"
 sidebar_label: Gateway
-description: Envoy-based Gateway API implementation for HTTP/HTTPS routing and TLS termination.
+description: Envoy Gateway implementation configuration fields, listeners, and defaults.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [networking, gateway, envoy, routing, tls]
+tags: [networking, gateway, envoy, routing, tls, services]
 ---
 
-> **Purpose:** For platform engineers and operators, documents the Envoy Gateway service configuration, covering listeners, TLS termination, and routing.
+> **Purpose:** For platform engineers and operators, documents the Envoy Gateway service configuration, covering listeners and defaults.
 
 ## Overview
 
-Gateway deploys an Envoy-based implementation of the Kubernetes Gateway API. It provides HTTP/HTTPS routing, TLS termination, load balancing, and support for multiple listeners. Each listener can bind to a specific hostname and port with optional TLS configuration.
+`gateway` deploys an Envoy-based `Gateway` resource implementing the Kubernetes Gateway API, consuming the CRDs installed by [gateway-api](gateway-api.md).
 
 ## Configuration
 
@@ -20,36 +20,34 @@ Gateway deploys an Envoy-based implementation of the Kubernetes Gateway API. It 
 opencenter:
   services:
     gateway:
-      enabled: true                          # default: true
-      gateway_name: rmpk-gateway             # default: rmpk-gateway
-      gateway_namespace: rackspace-system     # default: rackspace-system
-      gateway_class: eg                       # default: eg
-      default_issuer: ""                      # cert-manager ClusterIssuer name
+      enabled: true                        # default: true
+      namespace: gateway                   # default: gateway
+      gateway_name: rmpk-gateway           # default: rmpk-gateway
+      gateway_namespace: rackspace-system   # default: rackspace-system
+      gateway_class: eg                     # default: eg
+      default_issuer: ""
       listeners:
         - name: https
           port: 443
-          protocol: HTTPS                    # HTTP or HTTPS
+          protocol: HTTPS                  # HTTP | HTTPS
           hostname: "*.example.com"
           tls_secret_name: wildcard-tls
-        - name: http
-          port: 80
-          protocol: HTTP
-          hostname: "*.example.com"
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `true` | Enable Envoy Gateway |
-| `gateway_name` | string | `rmpk-gateway` | Name of the Gateway resource |
-| `gateway_namespace` | string | `rackspace-system` | Namespace for the Gateway |
-| `gateway_class` | string | `eg` | GatewayClass to use |
-| `default_issuer` | string | `""` | Default cert-manager ClusterIssuer for TLS |
-| `listeners` | list | `[]` | Listener definitions |
-| `listeners[].name` | string | — | Listener identifier |
-| `listeners[].port` | int | — | Port number |
-| `listeners[].protocol` | string | — | `HTTP` or `HTTPS` |
-| `listeners[].hostname` | string | — | Hostname pattern |
-| `listeners[].tls_secret_name` | string | — | TLS secret name (HTTPS only) |
+| `enabled` | bool | `true` | Whether the Gateway resource is deployed |
+| `namespace` | string | `gateway` | Namespace for the Gateway service records |
+| `gateway_name` | string | `rmpk-gateway` | Name of the generated `Gateway` resource (`GatewayConfig.GatewayName`) |
+| `gateway_namespace` | string | `rackspace-system` | Namespace the `Gateway` resource is created in |
+| `gateway_class` | string | `eg` | `GatewayClass` name |
+| `default_issuer` | string | — | Default cert-manager `ClusterIssuer` for listener TLS |
+| `listeners` | list of `GatewayListener` | `[]` | Listener definitions |
+| `listeners[].name` | string | required | Listener identifier |
+| `listeners[].port` | int | required | Port number |
+| `listeners[].protocol` | string | required | `HTTP` or `HTTPS` |
+| `listeners[].hostname` | string | — | Hostname pattern for the listener |
+| `listeners[].tls_secret_name` | string | — | TLS secret name (HTTPS listeners) |
 
 ## Bring-your-own TLS
 
@@ -90,41 +88,17 @@ block is configured the output is unchanged.
 
 ## Dependencies
 
-| Service | Reason |
-|---------|--------|
-| `gateway-api` | Provides the Gateway API CRDs consumed by Envoy Gateway |
+None enforced by `opencenter cluster service enable|disable`, though `gateway` is functionally dependent on `gateway-api`'s CRDs being present. The render catalog lists `envoy-gateway-api-base` as an extra rendering-order dependency for `gateway`.
 
-## Verification
+## Rendering
 
-```bash
-# Check Envoy Gateway controller
-kubectl get pods -n envoy-gateway-system
+`gateway` has no dedicated YAML descriptor; it is rendered as a single-stage entry in the built-in render catalog (`internal/gitops/render_catalog.go`), which generates `namespace.yaml`, `gateway-class.yaml`, `gateway.yaml`, and `envoy-proxy-config.yaml` from a fixed Kustomization content template rather than Helm values.
 
-# Verify Gateway resource
-kubectl get gateway -n rackspace-system rmpk-gateway
-
-# Check Gateway status and listeners
-kubectl describe gateway -n rackspace-system rmpk-gateway
-
-# List HTTPRoutes
-kubectl get httproutes --all-namespaces
-
-# Verify GatewayClass
-kubectl get gatewayclass eg
-```
-
-## CLI Commands
+## CLI commands
 
 ```bash
-# Enable Gateway
 opencenter cluster service enable gateway
-
-# Disable Gateway
 opencenter cluster service disable gateway
-
-# View configuration options
-opencenter cluster service options gateway
-
-# Check service status
 opencenter cluster service status
+opencenter cluster service options gateway
 ```
