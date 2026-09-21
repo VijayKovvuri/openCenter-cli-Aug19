@@ -139,7 +139,6 @@ A few pages live at the `docs/` root rather than in a lifecycle directory
 
 | Page | Description |
 |------|-------------|
-| [README](providers/README.md) | Provider overview |
 | [vmware](providers/vmware.md) | VMware provider guide |
 | [vmware-quick-start](providers/vmware-quick-start.md) | VMware quick start |
 | [vmware-terraform-template](providers/vmware-terraform-template.md) | VMware Terraform |

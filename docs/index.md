@@ -49,7 +49,6 @@ Task-oriented how-to guides for day-2 work.
 
 Provider-specific guides.
 
-* [Infrastructure Providers Overview](providers/README.md)
 * [VMware Provider Guide](providers/vmware.md)
 * [VMware Quick Start](providers/vmware-quick-start.md)
 * [VMware Terraform Template](providers/vmware-terraform-template.md)
