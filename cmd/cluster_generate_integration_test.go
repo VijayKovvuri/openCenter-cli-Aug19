@@ -23,9 +23,11 @@ import (
 
 	"github.com/opencenter-cloud/opencenter-cli/internal/cluster"
 	"github.com/opencenter-cloud/opencenter-cli/internal/config"
+	"github.com/opencenter-cloud/opencenter-cli/internal/config/services"
 	"github.com/opencenter-cloud/opencenter-cli/internal/core/paths"
 	"github.com/opencenter-cloud/opencenter-cli/internal/core/validation"
 	"github.com/opencenter-cloud/opencenter-cli/internal/core/validation/validators"
+	"github.com/opencenter-cloud/opencenter-cli/internal/sops"
 	"gopkg.in/yaml.v3"
 )
 
@@ -183,6 +185,99 @@ func TestClusterGenerateIntegrationKindProviderDisableDefaultCNI(t *testing.T) {
 	}
 	if !strings.Contains(string(kindConfigBytes), "disableDefaultCNI: true") {
 		t.Fatalf("expected kind-config.yaml to render disableDefaultCNI: true\ncontents:\n%s", string(kindConfigBytes))
+	}
+}
+
+func TestClusterGenerateIntegrationMetalLBOverlay(t *testing.T) {
+	dir := t.TempDir()
+	prepareCommandTestEnv(t, dir)
+
+	binDir := t.TempDir()
+	installFakeGitBinary(t, binDir)
+	prependTestPath(t, binDir)
+
+	clusterName := "metallb-overlay-int"
+	organization := "test-org"
+	cfg, clusterPaths := saveKindConfigForCommandTest(t, dir, clusterName, organization)
+	cfg.OpenCenter.Infrastructure.Networking.LoadbalancerProvider = "metallb"
+
+	metallb, ok := cfg.OpenCenter.Services["metallb"].(*services.MetalLBConfig)
+	if !ok {
+		t.Fatalf("metallb service has unexpected configuration type %T", cfg.OpenCenter.Services["metallb"])
+	}
+	metallb.Enabled = true
+	metallb.IPAddressPools = []services.IPAddressPool{{
+		Name:      "public-pool",
+		Addresses: []string{"72.4.119.48/28"},
+	}}
+	metallb.L2Advertisements = []services.L2Advertisement{{
+		Name:           "public-pool-l2",
+		IPAddressPools: []string{"public-pool"},
+		Interfaces:     []string{"metal.105", "mgmt.102"},
+	}}
+
+	keyManager := sops.NewKeyManager(filepath.Dir(clusterPaths.SOPSKeyPath))
+	keyPair, err := keyManager.GenerateAgeKey()
+	if err != nil {
+		t.Fatalf("generate test age key: %v", err)
+	}
+	keyName := strings.TrimSuffix(filepath.Base(clusterPaths.SOPSKeyPath), ".txt")
+	if err := keyManager.SaveAgeKey(keyPair, keyName); err != nil {
+		t.Fatalf("save test age key: %v", err)
+	}
+	cfg.Secrets.SopsAgeKeyFile = clusterPaths.SOPSKeyPath
+	cfg.Secrets.SOPSConfig.AgeKeyFile = clusterPaths.SOPSKeyPath
+
+	data, err := yaml.Marshal(&cfg)
+	if err != nil {
+		t.Fatalf("marshal MetalLB test config: %v", err)
+	}
+	if err := os.WriteFile(clusterPaths.ConfigPath, data, 0o600); err != nil {
+		t.Fatalf("write MetalLB test config: %v", err)
+	}
+
+	resetCommandStateForTests()
+	setupCmd := newClusterGenerateCmd()
+	setupCmd.SetOut(&bytes.Buffer{})
+	setupCmd.SetErr(&bytes.Buffer{})
+	setupCmd.SetArgs([]string{clusterName, "--skip-validation"})
+	if err := setupCmd.Execute(); err != nil {
+		t.Fatalf("cluster generate failed: %v", err)
+	}
+
+	overlayDir := filepath.Join(clusterPaths.GitOpsDir, "applications", "overlays", clusterName, "services", "metallb")
+	ipAddressPool, err := os.ReadFile(filepath.Join(overlayDir, "ipaddresspool.yaml"))
+	if err != nil {
+		t.Fatalf("read generated ipaddresspool.yaml: %v", err)
+	}
+	ipAddressPoolContent := string(ipAddressPool)
+	for _, expected := range []string{
+		"kind: IPAddressPool",
+		"name: public-pool",
+		"addresses:",
+		"- 72.4.119.48/28",
+	} {
+		if !strings.Contains(ipAddressPoolContent, expected) {
+			t.Errorf("ipaddresspool.yaml missing %q:\n%s", expected, ipAddressPoolContent)
+		}
+	}
+
+	l2Advertisement, err := os.ReadFile(filepath.Join(overlayDir, "l2advertisement.yaml"))
+	if err != nil {
+		t.Fatalf("read generated l2advertisement.yaml: %v", err)
+	}
+	l2AdvertisementContent := string(l2Advertisement)
+	for _, expected := range []string{
+		"kind: L2Advertisement",
+		"ipAddressPools:",
+		"- public-pool",
+		"interfaces:",
+		"- metal.105",
+		"- mgmt.102",
+	} {
+		if !strings.Contains(l2AdvertisementContent, expected) {
+			t.Errorf("l2advertisement.yaml missing %q:\n%s", expected, l2AdvertisementContent)
+		}
 	}
 }
 

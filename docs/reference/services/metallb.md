@@ -14,10 +14,15 @@ tags: [networking, load-balancer, bare-metal, services]
 
 MetalLB provides a `LoadBalancer`-type Service implementation for clusters that are not on a cloud provider with a built-in load balancer. It is disabled by default.
 
+MetalLB requires two independent settings: select `metallb` as the load-balancer provider and enable the `metallb` service. Selecting the provider does not enable the service, and enabling the service does not select it as the provider.
+
 ## Configuration
 
 ```yaml
 opencenter:
+  infrastructure:
+    networking:
+      loadbalancer_provider: metallb
   services:
     metallb:
       enabled: true
@@ -25,16 +30,20 @@ opencenter:
       ip_address_pools:
         - name: public-pool
           addresses:
-            - 72.4.119.48/28
+            - 192.168.1.240-192.168.1.254
           auto_assign: true
           avoid_buggy_ips: false
       l2_advertisements:
         - name: public-pool-l2
+          type: l2
           ip_address_pools:
             - public-pool
           interfaces:
-            - eth0
+            - metal.105
+            - mgmt.102
 ```
+
+The interfaces list scopes announcements to those node interfaces; replace them with interfaces that exist on every node that should announce the pool. Both the provider selection and service enablement are required for MetalLB-backed `LoadBalancer` Services to work.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -47,10 +56,20 @@ opencenter:
 | `ip_address_pools[].avoid_buggy_ips` | bool | `false` | Avoid `.0`/`.255` addresses |
 | `l2_advertisements` | list | — | `L2Advertisement` definitions |
 | `l2_advertisements[].name` | string | required | Advertisement identifier |
+| `l2_advertisements[].type` | string | `l2` | Advertisement type; only `l2` is supported by configuration |
 | `l2_advertisements[].ip_address_pools` | list of strings | all pools if empty | Pools this advertisement selects |
 | `l2_advertisements[].interfaces` | list of strings | — | Node interfaces to advertise on |
 
 If `l2_advertisements` is omitted entirely, no L2 advertisement is generated.
+
+## Generated resources and custom resources
+
+When the service is enabled, `opencenter cluster generate` renders the configured pools and L2 advertisements into the MetalLB service overlay:
+
+* `ipaddresspool.yaml` contains the generated `IPAddressPool` resources when `ip_address_pools` is configured.
+* `l2advertisement.yaml` contains the generated `L2Advertisement` resources when `l2_advertisements` includes supported L2 entries.
+
+These generated files under `applications/overlays/<cluster>/services/metallb/` are CLI-owned and must not be hand-edited; change the cluster configuration and regenerate instead. L2 is the supported config-driven advertisement type. BGP resources, including `BGPPeer`, `BGPAdvertisement`, and `BFDProfile`, remain custom, user-owned manifests and belong under `applications/overlays/<cluster>/services/metallb/custom/`, which is preserved across regeneration.
 
 ## Dependencies
 

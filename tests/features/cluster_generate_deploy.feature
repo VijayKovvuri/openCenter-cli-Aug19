@@ -36,6 +36,44 @@ Feature: GitOps generation and deployment
     And a file "<<tmp>>/repo-dev/infrastructure/clusters/dev/main.tf" should exist
     And a file "<<tmp>>/repo-dev/infrastructure/clusters/dev/provider.tf" should exist
 
+  @generate @metallb
+  Scenario: Generate MetalLB pool and interface-scoped L2 advertisement
+    Given a file "<<tmp>>/conf/metallb-test.yaml" with content:
+      """
+      opencenter:
+        cluster:
+          cluster_name: metallb-test
+        gitops:
+          git_dir: <<tmp>>/repo-dev
+        services:
+          metallb:
+            enabled: true
+            namespace: metallb-system
+            ip_address_pools:
+              - name: public-pool
+                addresses:
+                  - 72.4.119.48/28
+            l2_advertisements:
+              - name: public-pool-l2
+                ip_address_pools:
+                  - public-pool
+                interfaces:
+                  - metal.105
+      """
+    When I run "opencenter cluster use metallb-test --config-dir <<tmp>>/conf"
+    Then the exit code should be 0
+    When I run "opencenter cluster generate --skip-validation --config-dir <<tmp>>/conf"
+    Then the exit code should be 0
+    And a file "<<tmp>>/repo-dev/applications/overlays/metallb-test/services/metallb/ipaddresspool.yaml" should exist
+    And the file "<<tmp>>/repo-dev/applications/overlays/metallb-test/services/metallb/ipaddresspool.yaml" should contain "kind: IPAddressPool"
+    And the file "<<tmp>>/repo-dev/applications/overlays/metallb-test/services/metallb/ipaddresspool.yaml" should contain "name: public-pool"
+    And the file "<<tmp>>/repo-dev/applications/overlays/metallb-test/services/metallb/ipaddresspool.yaml" should contain "72.4.119.48/28"
+    And a file "<<tmp>>/repo-dev/applications/overlays/metallb-test/services/metallb/l2advertisement.yaml" should exist
+    And the file "<<tmp>>/repo-dev/applications/overlays/metallb-test/services/metallb/l2advertisement.yaml" should contain "kind: L2Advertisement"
+    And the file "<<tmp>>/repo-dev/applications/overlays/metallb-test/services/metallb/l2advertisement.yaml" should contain "ipAddressPools:"
+    And the file "<<tmp>>/repo-dev/applications/overlays/metallb-test/services/metallb/l2advertisement.yaml" should contain "interfaces:"
+    And the file "<<tmp>>/repo-dev/applications/overlays/metallb-test/services/metallb/l2advertisement.yaml" should contain "metal.105"
+
   # ---------------------------------------------------------------------------
   # Validation errors during generate
   # ---------------------------------------------------------------------------
