@@ -154,3 +154,11 @@ func TestClusterServiceHarborRejectsPartialS3Credentials(t *testing.T) {
 		t.Fatalf("validateService() error = %v, want partial Harbor S3 credential rejection", err)
 	}
 }
+
+func TestClusterServiceHarborFilesystemNeedsNoS3Credentials(t *testing.T) {
+	secrets := &v2.SecretsConfig{}
+	harbor := &services.HarborConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "filesystem", RegistryVolumeSize: 10, JobserviceVolumeSize: 10, DatabaseVolumeSize: 10, RedisVolumeSize: 10, TrivyVolumeSize: 10}
+	if err := validateService("harbor", harbor, secrets); err != nil {
+		t.Fatalf("validateService() error = %v, want filesystem Harbor without S3 credentials to be valid", err)
+	}
+}

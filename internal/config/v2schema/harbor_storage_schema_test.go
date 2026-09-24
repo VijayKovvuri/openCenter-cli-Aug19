@@ -23,8 +23,8 @@ func TestGeneratedSchemaContainsHarborStorageContract(t *testing.T) {
 		}
 	}
 	storageType := schemaAt(t, properties, "storage_type")
-	if got := stringSliceAt(t, storageType, "enum"); len(got) != 1 || got[0] != "s3" {
-		t.Fatalf("Harbor storage_type enum = %v, want [s3]", got)
+	if got := stringSliceAt(t, storageType, "enum"); len(got) != 2 || got[0] != "s3" || got[1] != "filesystem" {
+		t.Fatalf("Harbor storage_type enum = %v, want [s3 filesystem]", got)
 	}
 	s3Endpoint := schemaAt(t, properties, "s3_endpoint")
 	if s3Endpoint["format"] != "uri" {

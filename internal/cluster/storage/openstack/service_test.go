@@ -125,11 +125,40 @@ func TestValidateOptionsMappings(t *testing.T) {
 	for _, tc := range []struct {
 		service, backend string
 		wantErr          bool
-	}{{"loki", "swift", false}, {"loki", "s3", false}, {"tempo", "swift", true}, {"tempo", "s3", false}, {"harbor", "s3", false}, {"harbor", "swift", true}, {"etcd-backup", "s3", false}, {"velero", "s3", false}, {"velero", "swift", true}, {"other", "s3", true}} {
+	}{{"loki", "swift", false}, {"loki", "s3", false}, {"loki", "none", false}, {"tempo", "swift", true}, {"tempo", "s3", false}, {"harbor", "s3", false}, {"harbor", "filesystem", false}, {"harbor", "swift", true}, {"etcd-backup", "s3", false}, {"etcd-backup", "none", false}, {"velero", "s3", false}, {"velero", "none", false}, {"velero", "swift", true}, {"other", "s3", true}} {
 		err := ValidateOptions(Options{Service: tc.service, Backend: tc.backend, Cluster: "prod"})
 		if (err != nil) != tc.wantErr {
 			t.Errorf("%s=%s error=%v, wantErr=%v", tc.service, tc.backend, err, tc.wantErr)
 		}
+	}
+}
+
+func TestPlanNonRemoteStorageSkipsOpenStackProvisioning(t *testing.T) {
+	for _, tc := range []struct {
+		service, backend string
+	}{
+		{"harbor", "filesystem"}, {"velero", "none"}, {"etcd-backup", "none"},
+	} {
+		t.Run(tc.service+"-"+tc.backend, func(t *testing.T) {
+			cfg := testConfig(t)
+			if tc.service == "harbor" {
+				cfg.OpenCenter.Services["harbor"] = &services.HarborConfig{BaseConfig: services.BaseConfig{Enabled: true}, RegistryVolumeSize: 10, JobserviceVolumeSize: 10, DatabaseVolumeSize: 10, RedisVolumeSize: 10, TrivyVolumeSize: 10}
+			}
+			planned, err := Plan(context.Background(), PlanInput{Config: cfg, Options: Options{Service: tc.service, Backend: tc.backend, Cluster: "prod"}})
+			require.NoError(t, err)
+			require.Empty(t, planned.Result.RemoteActions)
+			require.Empty(t, planned.Result.S3Endpoint)
+			service, err := serviceConfig(planned.prospective, tc.service)
+			require.NoError(t, err)
+			switch typed := service.(type) {
+			case *services.HarborConfig:
+				require.Equal(t, tc.backend, typed.StorageType)
+			case *services.VeleroConfig:
+				require.Equal(t, tc.backend, typed.StorageType)
+			case *services.EtcdBackupConfig:
+				require.Equal(t, tc.backend, typed.StorageType)
+			}
+		})
 	}
 }
 

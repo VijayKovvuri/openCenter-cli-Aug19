@@ -5,3 +5,7 @@ aggregate_targets:
   - services-fluxcd-aggregate
 roots:
   - path: services/etcd-backup
+    when:
+      field: opencenter.services.etcd-backup.storage_type
+      operator: not_equals
+      value: none

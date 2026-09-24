@@ -1,18 +1,34 @@
 ---
+last_updated: 2026-09-24
 id: service-harbor
 title: "Harbor"
 sidebar_label: Harbor
-description: Container registry configuration, storage sizing, database options, and required S3 secrets.
+description: Container registry configuration, storage sizing, database options, and S3 or filesystem storage.
 doc_type: reference
 audience: "platform engineers, operators"
 tags: [registry, containers, harbor, services]
 ---
 
-> **Purpose:** For platform engineers, documents Harbor's configuration surface, storage/database options, and its required S3 credentials.
+> **Purpose:** For platform engineers, documents Harbor's configuration surface, storage/database options, and storage credentials.
 
 ## Overview
 
-Harbor is a container registry, deployed with S3-backed image storage.
+Harbor is a container registry. Image storage can use S3-compatible object storage or the Harbor registry PVC filesystem.
+
+With `storage_type: filesystem`, Harbor stores images on its registry PVC. This
+mode does not use S3 and does not require Harbor S3 credentials. The other
+Harbor PVCs (jobservice, database, Redis, and Trivy) remain configured as
+usual.
+
+```yaml
+opencenter:
+  services:
+    harbor:
+      enabled: true
+      storage_type: filesystem
+      registry_volume_size: 100
+      storage_class: standard
+```
 
 ## Configuration
 
@@ -24,7 +40,7 @@ opencenter:
       namespace: harbor                  # default: harbor
       hostname:
       external_url:
-      storage_type: s3                    # default: s3 (only s3 is a valid value)
+      storage_type: s3                     # default: s3; s3 | filesystem
       registry_volume_size: 100            # default: 100 (min 1)
       jobservice_volume_size: 10            # default: 10 (min 1; min 10 on Cinder-backed regions e.g. Rackspace SJC3)
       database_volume_size: 10              # default: 10 (min 1)
@@ -48,7 +64,7 @@ opencenter:
 | `namespace` | string | `harbor` | Namespace for Harbor resources |
 | `hostname` | string | — | Harbor external hostname |
 | `external_url` | string | — | External URL for Harbor; must be `http://` or `https://` when set |
-| `storage_type` | string | `s3` | Only `s3` is a valid value |
+| `storage_type` | string | `s3` | Image backend: `s3` or `filesystem`; filesystem uses the registry PVC and has no S3 credential requirement |
 | `registry_volume_size` | int | `100` | Registry PVC size in GB (min 1); retained for compatibility and required Harbor cache/state |
 | `jobservice_volume_size` | int | `10` | Jobservice log PVC size in GB (min 1; min 10 on Cinder-backed regions e.g. Rackspace SJC3) |
 | `database_volume_size` | int | `10` | Internal database PVC size in GB (min 1) |
@@ -78,7 +94,8 @@ secrets:
 
 ### Validation
 
-`opencenter cluster service enable harbor` requires the Harbor S3 access key and secret key to be provided together (both set, or both absent).
+For `storage_type: s3`, `opencenter cluster service enable harbor` requires the Harbor S3 access key and secret key to be provided together (both set, or both absent).
+For `storage_type: filesystem`, Harbor uses the registry PVC and has no S3 credentials; `s3_bucket`, `s3_region`, `s3_endpoint`, and the Harbor S3 secret fields are not used.
 
 ## Dependencies
 

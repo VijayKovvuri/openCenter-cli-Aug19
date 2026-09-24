@@ -74,6 +74,7 @@ func TestObjectStorageCapabilityHandlerSkipsS3PromptsWhenConfigIsComplete(t *tes
 		S3Region:         "us-east-1",
 		S3ForcePathStyle: true,
 	}
+	cfg.OpenCenter.Services["velero"].(*configservices.VeleroConfig).Enabled = false
 	cfg.Secrets.Global.AWS.Application.AccessKey = "AKIA-GLOBAL"
 	cfg.Secrets.Global.AWS.Application.SecretAccessKey = "global-secret"
 

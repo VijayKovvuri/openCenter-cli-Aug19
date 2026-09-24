@@ -274,6 +274,17 @@ func TestSecretsValidator_ValidateRequiredSecrets_VeleroMultipleStorageTypes(t *
 	}
 }
 
+func TestSecretsValidator_ValidateRequiredSecretsSkipsNone(t *testing.T) {
+	validator := NewSecretsValidator()
+	services := map[string]any{
+		"velero": &VeleroConfig{BaseConfig: BaseConfig{Enabled: true}, StorageType: "none"},
+	}
+	secrets := map[string]any{"service_secrets": map[string]any{}}
+	if errors := validator.ValidateRequiredSecrets(services, secrets); len(errors) != 0 {
+		t.Fatalf("expected no object-storage secrets for none, got %v", errors)
+	}
+}
+
 func TestSecretsValidator_ValidateRequiredSecrets_KeycloakAlways(t *testing.T) {
 	validator := NewSecretsValidator()
 

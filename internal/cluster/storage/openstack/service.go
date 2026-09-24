@@ -136,15 +136,17 @@ func ValidateOptions(opts Options) error {
 	if opts.Service == "" {
 		return fmt.Errorf("exactly one service is required")
 	}
-	if opts.Backend != "swift" && opts.Backend != "s3" {
-		return fmt.Errorf("backend must be swift or s3")
+	if opts.Backend != "swift" && opts.Backend != "s3" && opts.Backend != "none" && opts.Backend != "filesystem" {
+		return fmt.Errorf("backend must be swift, s3, none, or filesystem")
 	}
 	// Tempo has no Swift storage backend upstream (rejects "unknown backend swift"
 	// at startup), so tempo is S3-only here — consistent with the tempo plugin
-	// validator. Loki supports both. Harbor/etcd-backup/velero are S3-only.
+	// validator. Loki supports both remote S3 and its explicit no-object-storage
+	// mode; Harbor also supports its local filesystem mode, while
+	// Velero and etcd-backup support an explicit no-object-storage mode.
 	allowed := map[string]map[string]bool{
-		"loki": {"swift": true, "s3": true}, "tempo": {"s3": true},
-		"harbor": {"s3": true}, "etcd-backup": {"s3": true}, "velero": {"s3": true},
+		"loki": {"swift": true, "s3": true, "none": true}, "tempo": {"s3": true},
+		"harbor": {"s3": true, "filesystem": true}, "etcd-backup": {"s3": true, "none": true}, "velero": {"s3": true, "none": true},
 	}
 	if !allowed[opts.Service][opts.Backend] {
 		return fmt.Errorf("unsupported storage mapping %s=%s", opts.Service, opts.Backend)
@@ -152,12 +154,12 @@ func ValidateOptions(opts Options) error {
 	if strings.TrimSpace(opts.Cluster) == "" {
 		return fmt.Errorf("cluster is required")
 	}
-	if strings.TrimSpace(opts.Container) != "" {
+	if strings.TrimSpace(opts.Container) != "" && !isNonRemoteBackend(opts.Service, opts.Backend) {
 		if err := validateContainerForBackend(strings.TrimSpace(opts.Container), opts.Backend); err != nil {
 			return err
 		}
 	}
-	if strings.TrimSpace(opts.S3Endpoint) != "" {
+	if strings.TrimSpace(opts.S3Endpoint) != "" && !isNonRemoteBackend(opts.Service, opts.Backend) {
 		if err := validateS3Endpoint(opts.S3Endpoint); err != nil {
 			return err
 		}
@@ -174,15 +176,39 @@ func Plan(ctx context.Context, input PlanInput) (PlanOutput, error) {
 	if err := ValidateOptions(input.Options); err != nil {
 		return PlanOutput{}, err
 	}
-	if input.Adapter == nil {
-		return PlanOutput{}, fmt.Errorf("storage adapter is required")
+	serviceCfg, err := serviceConfig(input.Config, input.Options.Service)
+	if err != nil {
+		return PlanOutput{}, err
+	}
+	if isNonRemoteBackend(input.Options.Service, input.Options.Backend) {
+		if input.Options.Backend == "filesystem" && v2.EffectiveStorageProfile(input.Config).Lifecycle == v2.StorageLifecycleProduction {
+			return PlanOutput{}, fmt.Errorf("filesystem storage for %s is supported only in non-production environments", input.Options.Service)
+		}
+		prospective, err := cloneConfig(input.Config)
+		if err != nil {
+			return PlanOutput{}, fmt.Errorf("clone configuration for plan: %w", err)
+		}
+		prospectiveService, err := serviceConfig(prospective, input.Options.Service)
+		if err != nil {
+			return PlanOutput{}, err
+		}
+		changes := patchNonRemoteStorage(prospectiveService, &prospective.Secrets, input.Options)
+		if harbor, ok := prospectiveService.(*services.HarborConfig); ok {
+			if err := v2.ValidateHarborConfig(harbor); err != nil {
+				return PlanOutput{}, fmt.Errorf("validate prospective Harbor configuration: %w", err)
+			}
+		}
+		status := StatusPlanned
+		if len(changes) == 0 {
+			status = StatusNoOp
+		}
+		return PlanOutput{Result: Result{SchemaVersion: ResultSchemaVersion, Operation: "cluster.service.storage.plan", Status: status, Service: input.Options.Service, Backend: input.Options.Backend, Changes: changes}, prospective: prospective}, nil
 	}
 	if strings.ToLower(strings.TrimSpace(input.Config.OpenCenter.Infrastructure.Provider)) != "openstack" {
 		return PlanOutput{}, fmt.Errorf("cluster provider is %q; OpenStack storage requires provider openstack", input.Config.OpenCenter.Infrastructure.Provider)
 	}
-	serviceCfg, err := serviceConfig(input.Config, input.Options.Service)
-	if err != nil {
-		return PlanOutput{}, err
+	if input.Adapter == nil {
+		return PlanOutput{}, fmt.Errorf("storage adapter is required")
 	}
 	container := strings.TrimSpace(input.Options.Container)
 	if container == "" {
@@ -278,8 +304,13 @@ func Apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	if err := input.Adapter.EnsureContainer(ctx, cloudopenstack.ContainerRequest{Name: result.Container, Region: planned.Preflight.Region}); err != nil {
-		return Result{}, fmt.Errorf("ensure storage container: %w", redactError(err, cfg))
+	if len(result.RemoteActions) > 0 {
+		if input.Adapter == nil {
+			return Result{}, fmt.Errorf("storage adapter is required")
+		}
+		if err := input.Adapter.EnsureContainer(ctx, cloudopenstack.ContainerRequest{Name: result.Container, Region: planned.Preflight.Region}); err != nil {
+			return Result{}, fmt.Errorf("ensure storage container: %w", redactError(err, cfg))
+		}
 	}
 	if result.Status == StatusNoOp {
 		return result, nil
@@ -290,6 +321,9 @@ func Apply(ctx context.Context, input ApplyInput) (Result, error) {
 		}
 	}
 	complete, rotate := hasCompleteCredential(cfg, input.Options)
+	if len(result.RemoteActions) == 0 {
+		complete, rotate = true, false
+	}
 	oldID := existingCredentialIDForConfig(cfg, input.Options)
 	var createdType, createdID string
 	var createdSecret, createdAccess string
@@ -585,6 +619,75 @@ func serviceConfig(cfg *v2.Config, name string) (any, error) {
 	}
 }
 
+func isNonRemoteBackend(service, backend string) bool {
+	switch service {
+	case "loki", "etcd-backup", "velero":
+		return backend == "none"
+	case "harbor":
+		return backend == "filesystem"
+	default:
+		return false
+	}
+}
+
+// IsNonRemoteBackend reports whether the backend needs no OpenStack cloud,
+// container, endpoint, or credential provisioning.
+func IsNonRemoteBackend(service, backend string) bool {
+	return isNonRemoteBackend(strings.ToLower(strings.TrimSpace(service)), strings.ToLower(strings.TrimSpace(backend)))
+}
+
+func patchNonRemoteStorage(service any, secrets *v2.SecretsConfig, opts Options) []ConfigChange {
+	changes := make([]ConfigChange, 0)
+	set := func(path, old, next string) {
+		if old != next {
+			changes = append(changes, ConfigChange{Path: path, Old: redacted(path, old), New: redacted(path, next)})
+		}
+	}
+	clear := func(path string, value *string) {
+		set(path, *value, "")
+		*value = ""
+	}
+	switch typed := service.(type) {
+	case *services.LokiConfig:
+		set("opencenter.services.loki.storage_type", typed.StorageType, opts.Backend)
+		typed.StorageType = opts.Backend
+		clear("opencenter.services.loki.bucket_name", &typed.BucketName)
+		clear("opencenter.services.loki.s3_endpoint", &typed.S3Endpoint)
+		clear("opencenter.services.loki.s3_region", &typed.S3Region)
+		clear("opencenter.services.loki.s3_credential_id", &typed.S3CredentialID)
+		clear("opencenter.services.loki.swift_application_credential_id", &typed.SwiftApplicationCredentialID)
+		secrets.Loki.S3AccessKeyID, secrets.Loki.S3SecretAccessKey = "", ""
+		secrets.Loki.SwiftApplicationCredentialSecret = ""
+	case *services.HarborConfig:
+		set("opencenter.services.harbor.storage_type", typed.StorageType, opts.Backend)
+		typed.StorageType = opts.Backend
+		clear("opencenter.services.harbor.s3_bucket", &typed.S3Bucket)
+		clear("opencenter.services.harbor.s3_region", &typed.S3Region)
+		clear("opencenter.services.harbor.s3_endpoint", &typed.S3Endpoint)
+		secrets.Harbor.S3AccessKeyID, secrets.Harbor.S3SecretAccessKey = "", ""
+	case *services.EtcdBackupConfig:
+		set("opencenter.services.etcd-backup.storage_type", typed.StorageType, opts.Backend)
+		typed.StorageType = opts.Backend
+		clear("opencenter.services.etcd-backup.s3_host", &typed.S3Host)
+		clear("opencenter.services.etcd-backup.s3_endpoint", &typed.S3Endpoint)
+		clear("opencenter.services.etcd-backup.s3_bucket_name", &typed.S3BucketName)
+		clear("opencenter.services.etcd-backup.s3_region", &typed.S3Region)
+		clear("opencenter.services.etcd-backup.s3_credential_id", &typed.S3CredentialID)
+		secrets.EtcdBackup.AccessKeyID, secrets.EtcdBackup.SecretAccessKey = "", ""
+	case *services.VeleroConfig:
+		set("opencenter.services.velero.storage_type", typed.StorageType, opts.Backend)
+		typed.StorageType = opts.Backend
+		clear("opencenter.services.velero.backup_bucket", &typed.BackupBucket)
+		clear("opencenter.services.velero.region", &typed.Region)
+		clear("opencenter.services.velero.s3_endpoint", &typed.S3Endpoint)
+		clear("opencenter.services.velero.s3_region", &typed.S3Region)
+		clear("opencenter.services.velero.s3_credential_id", &typed.S3CredentialID)
+		secrets.Velero.AccessKeyID, secrets.Velero.SecretAccessKey = "", ""
+	}
+	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
+	return changes
+}
+
 func patchService(service any, secrets *v2.SecretsConfig, opts Options, container string, preflight cloudopenstack.StoragePreflight, reuse bool) ([]ConfigChange, []string, []string, string) {
 	changes := []ConfigChange{}
 	secretPaths := []string{}
@@ -684,6 +787,8 @@ func patchService(service any, secrets *v2.SecretsConfig, opts Options, containe
 		}
 	case *services.EtcdBackupConfig:
 		oldID = typed.S3CredentialID
+		set("opencenter.services.etcd-backup.storage_type", typed.StorageType, "s3")
+		typed.StorageType = "s3"
 		host := endpointHost(preflight.Endpoint)
 		set("opencenter.services.etcd-backup.s3_host", typed.S3Host, host)
 		typed.S3Host = host

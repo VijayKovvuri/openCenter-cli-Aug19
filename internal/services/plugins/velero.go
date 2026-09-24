@@ -51,9 +51,8 @@ func (p *VeleroPlugin) validate(config interface{}) error {
 	}
 
 	if strings.EqualFold(strings.TrimSpace(cfg.StorageType), "none") {
-		if cfg.IsEnabled() {
-			return fmt.Errorf("storage_type none cannot be used when Velero is enabled")
-		}
+		// Velero remains a useful basic deployment without an object-storage
+		// backend. The renderer omits the BackupStorageLocation and credentials.
 		return nil
 	}
 

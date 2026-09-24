@@ -201,6 +201,11 @@ func evaluateDescriptorCondition(view map[string]any, condition *descriptorcfg.C
 			return false, nil
 		}
 		return fmt.Sprint(value) == condition.Value, nil
+	case descriptorcfg.ConditionOperatorNotEquals:
+		if !exists {
+			return true, nil
+		}
+		return fmt.Sprint(value) != condition.Value, nil
 	default:
 		return false, fmt.Errorf("unsupported descriptor operator %q", condition.Operator)
 	}

@@ -67,6 +67,7 @@ func Plan(cfg *v2.Config) ([]Artifact, error) {
 		{"tempo", cfg.Secrets.Tempo}, {"alert-proxy", cfg.Secrets.AlertProxy},
 		{"vsphere-csi", cfg.Secrets.VSphereCsi},
 		{"etcd-backup", etcdBackupPayload(cfg)},
+		{"harbor", harborPayload(cfg)},
 		{"velero", veleroPayload(cfg)},
 	}
 	sources := append([]source(nil), fixed...)
@@ -85,12 +86,20 @@ func Plan(cfg *v2.Config) ([]Artifact, error) {
 		if err := validateService(service); err != nil {
 			return nil, fmt.Errorf("service_secrets %q: %w", raw, err)
 		}
+		// Canonical Harbor and Tempo secrets are supplied by the typed config
+		// blocks above. Do not add a second owner for the same target artifact;
+		// this also prevents filesystem/managed modes from reintroducing legacy
+		// S3 keys through service_secrets.
+		if service == "harbor" || service == "tempo" {
+			continue
+		}
 		sources = append(sources, source{service, cfg.Secrets.ServiceSecrets[raw]})
 	}
 
 	byPath := make(map[string]*Artifact)
 	for _, source := range sources {
 		if (source.name == "loki" && v2.ResolveObjectStorageBackend(cfg, "loki") == "none") ||
+			(source.name == "etcd-backup" && v2.ResolveObjectStorageBackend(cfg, "etcd-backup") == "none") ||
 			(source.name == "velero" && v2.ResolveVeleroStorageBackend(cfg) == "none") {
 			continue
 		}
@@ -169,6 +178,9 @@ func Plan(cfg *v2.Config) ([]Artifact, error) {
 }
 
 func etcdBackupPayload(cfg *v2.Config) map[string]interface{} {
+	if v2.ResolveObjectStorageBackend(cfg, "etcd-backup") == "none" {
+		return nil
+	}
 	service, _ := cfg.OpenCenter.Services["etcd-backup"].(*services.EtcdBackupConfig)
 	if service == nil && strings.TrimSpace(cfg.Secrets.EtcdBackup.AccessKeyID) == "" && strings.TrimSpace(cfg.Secrets.EtcdBackup.SecretAccessKey) == "" {
 		return nil
@@ -187,6 +199,21 @@ func etcdBackupPayload(cfg *v2.Config) map[string]interface{} {
 		payload["S3_HOST"] = endpoint
 		payload["S3_REGION"] = service.S3Region
 		payload["S3_BUCKET_NAME"] = service.S3BucketName
+	}
+	return payload
+}
+
+func harborPayload(cfg *v2.Config) any {
+	// Harbor's registry/database credentials remain materialized, but its S3
+	// credentials are not applicable to filesystem or managed RustFS storage.
+	payload := map[string]interface{}{
+		"admin_password":    cfg.Secrets.Harbor.AdminPassword,
+		"registry_password": cfg.Secrets.Harbor.RegistryPassword,
+		"database_password": cfg.Secrets.Harbor.DatabasePassword,
+	}
+	if v2.ResolveObjectStorageBackend(cfg, "harbor") == "s3" && !v2.UsesManagedObjectStorage(cfg) {
+		payload["s3_access_key_id"] = cfg.Secrets.Harbor.S3AccessKeyID
+		payload["s3_secret_access_key"] = cfg.Secrets.Harbor.S3SecretAccessKey
 	}
 	return payload
 }

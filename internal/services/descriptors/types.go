@@ -4,10 +4,11 @@ package descriptors
 type ConditionOperator string
 
 const (
-	ConditionOperatorEquals ConditionOperator = "equals"
-	ConditionOperatorExists ConditionOperator = "exists"
-	ConditionOperatorTrue   ConditionOperator = "true"
-	ConditionOperatorFalse  ConditionOperator = "false"
+	ConditionOperatorEquals    ConditionOperator = "equals"
+	ConditionOperatorNotEquals ConditionOperator = "not_equals"
+	ConditionOperatorExists    ConditionOperator = "exists"
+	ConditionOperatorTrue      ConditionOperator = "true"
+	ConditionOperatorFalse     ConditionOperator = "false"
 )
 
 // Condition applies a simple field-based predicate against typed config data.

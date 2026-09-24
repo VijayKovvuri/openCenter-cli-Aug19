@@ -75,8 +75,21 @@ func UsesManagedObjectStorage(cfg *Config) bool {
 // Platform bulk data uses an S3-compatible API, supplied externally or by
 // RustFS, unless a service explicitly opts out of object storage.
 func ResolveObjectStorageBackend(cfg *Config, serviceName string) string {
-	if serviceName == "loki" {
-		if loki, ok := configuredService(cfg, serviceName).(*services.LokiConfig); ok && strings.EqualFold(strings.TrimSpace(loki.StorageType), "none") {
+	switch service := configuredService(cfg, serviceName).(type) {
+	case *services.LokiConfig:
+		if strings.EqualFold(strings.TrimSpace(service.StorageType), "none") {
+			return "none"
+		}
+	case *services.HarborConfig:
+		if strings.EqualFold(strings.TrimSpace(service.StorageType), "filesystem") {
+			return "filesystem"
+		}
+	case *services.VeleroConfig:
+		if strings.EqualFold(strings.TrimSpace(service.StorageType), "none") {
+			return "none"
+		}
+	case *services.EtcdBackupConfig:
+		if strings.EqualFold(strings.TrimSpace(service.StorageType), "none") {
 			return "none"
 		}
 	}
@@ -124,7 +137,7 @@ func storagePolicyIssues(cfg *Config) []storagePolicyIssue {
 			if !isServiceEnabled(cfg, serviceName) {
 				continue
 			}
-			if serviceName == "loki" && ResolveObjectStorageBackend(cfg, serviceName) == "none" {
+			if storageBackendDoesNotUseObjectStorage(cfg, serviceName) {
 				continue
 			}
 			if err := ValidateS3Endpoint(externalS3Endpoint(cfg, serviceName)); err != nil {
@@ -136,7 +149,7 @@ func storagePolicyIssues(cfg *Config) []storagePolicyIssue {
 		}
 	}
 
-	for _, serviceName := range []string{"loki", "tempo", "velero", "harbor"} {
+	for _, serviceName := range []string{"loki", "tempo", "velero", "harbor", "etcd-backup"} {
 		if !isServiceEnabled(cfg, serviceName) {
 			continue
 		}
@@ -148,6 +161,15 @@ func storagePolicyIssues(cfg *Config) []storagePolicyIssue {
 			continue
 		}
 		path := "opencenter.services." + serviceName + ".storage_type"
+		if storageType == "filesystem" && serviceName == "harbor" {
+			if EffectiveStorageProfile(cfg).Lifecycle == StorageLifecycleProduction {
+				add(path, "filesystem storage is supported for Harbor only in non-production environments.")
+			}
+			continue
+		}
+		if storageType == "none" && (serviceName == "loki" || serviceName == "velero" || serviceName == "etcd-backup") {
+			continue
+		}
 		if storageType == "swift" {
 			add(path, "Swift is no longer supported for platform bulk data; migrate to the S3-compatible storage profile.")
 			continue
@@ -155,6 +177,11 @@ func storagePolicyIssues(cfg *Config) []storagePolicyIssue {
 		add(path, fmt.Sprintf("storage_type %q is unsupported; platform bulk data must use S3-compatible storage.", storageType))
 	}
 	return issues
+}
+
+func storageBackendDoesNotUseObjectStorage(cfg *Config, serviceName string) bool {
+	backend := ResolveObjectStorageBackend(cfg, serviceName)
+	return backend == "none" || backend == "filesystem"
 }
 
 func externalS3Endpoint(cfg *Config, serviceName string) string {
@@ -183,6 +210,8 @@ func configuredBulkStorageType(cfg *Config, serviceName string) string {
 	case *services.VeleroConfig:
 		return strings.ToLower(strings.TrimSpace(service.StorageType))
 	case *services.HarborConfig:
+		return strings.ToLower(strings.TrimSpace(service.StorageType))
+	case *services.EtcdBackupConfig:
 		return strings.ToLower(strings.TrimSpace(service.StorageType))
 	default:
 		return ""
@@ -254,12 +283,12 @@ func validateHarborConfig(config *services.HarborConfig, requireS3Endpoint bool)
 		return fmt.Errorf("Harbor configuration must not be nil")
 	}
 	storageType := strings.ToLower(strings.TrimSpace(config.StorageType))
-	if storageType != "" && storageType != "s3" {
-		return fmt.Errorf("Harbor storage_type %q is unsupported; only s3 is supported", config.StorageType)
+	if storageType != "" && storageType != "s3" && storageType != "filesystem" {
+		return fmt.Errorf("Harbor storage_type %q is unsupported; only s3 or filesystem is supported", config.StorageType)
 	}
 	endpoint := strings.TrimSpace(config.S3Endpoint)
 	if endpoint == "" {
-		if config.Enabled && requireS3Endpoint {
+		if config.Enabled && requireS3Endpoint && storageType != "filesystem" {
 			return fmt.Errorf("Harbor s3_endpoint is required when Harbor is enabled")
 		}
 	} else {
@@ -589,12 +618,9 @@ func (v *defaultValidator) ValidateServices(cfg *Config) error {
 		return nil
 	}
 	if service := configuredService(cfg, "velero"); service != nil {
-		velero, ok := service.(*services.VeleroConfig)
+		_, ok := service.(*services.VeleroConfig)
 		if !ok {
 			return fmt.Errorf("velero service has unexpected configuration type %T", service)
-		}
-		if velero.Enabled && strings.EqualFold(strings.TrimSpace(velero.StorageType), "none") {
-			return fmt.Errorf("velero storage_type none cannot be used when Velero is enabled")
 		}
 	}
 	if service, ok := cfg.OpenCenter.Services["harbor"]; ok {
@@ -949,7 +975,7 @@ func isServiceEnabled(cfg *Config, serviceName string) bool {
 }
 
 func missingHarborDeploymentSecretPaths(cfg *Config) []string {
-	if !isServiceEnabled(cfg, "harbor") || UsesManagedObjectStorage(cfg) {
+	if !isServiceEnabled(cfg, "harbor") {
 		return nil
 	}
 	var missing []string
@@ -962,11 +988,13 @@ func missingHarborDeploymentSecretPaths(cfg *Config) []string {
 	if isMissingSecret(cfg.Secrets.Harbor.DatabasePassword) {
 		missing = append(missing, "secrets.harbor.database_password")
 	}
-	if isMissingSecret(cfg.Secrets.Harbor.S3AccessKeyID) {
-		missing = append(missing, "secrets.harbor.s3_access_key_id")
-	}
-	if isMissingSecret(cfg.Secrets.Harbor.S3SecretAccessKey) {
-		missing = append(missing, "secrets.harbor.s3_secret_access_key")
+	if !storageBackendDoesNotUseObjectStorage(cfg, "harbor") && !UsesManagedObjectStorage(cfg) {
+		if isMissingSecret(cfg.Secrets.Harbor.S3AccessKeyID) {
+			missing = append(missing, "secrets.harbor.s3_access_key_id")
+		}
+		if isMissingSecret(cfg.Secrets.Harbor.S3SecretAccessKey) {
+			missing = append(missing, "secrets.harbor.s3_secret_access_key")
+		}
 	}
 	return missing
 }

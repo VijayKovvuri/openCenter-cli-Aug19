@@ -170,7 +170,28 @@ func TestValidateReadinessLokiNoneSkipsObjectStorageChecks(t *testing.T) {
 	assertNoIssue(t, report, "secrets.loki.s3_secret_access_key")
 }
 
-func TestValidateServicesRejectsEnabledVeleroNone(t *testing.T) {
+func TestValidateReadinessFilesystemAndNoneSkipObjectStorageChecks(t *testing.T) {
+	cfg := validReadinessConfig(t, "kind")
+	harbor := cfg.OpenCenter.Services["harbor"].(*services.HarborConfig)
+	harbor.Enabled, harbor.StorageType, harbor.S3Endpoint = true, "filesystem", "not-an-endpoint"
+	cfg.Secrets.Harbor = HarborSecrets{AdminPassword: "admin", RegistryPassword: "registry", DatabasePassword: "database"}
+	velero := cfg.OpenCenter.Services["velero"].(*services.VeleroConfig)
+	velero.StorageType, velero.S3Endpoint = "none", "not-an-endpoint"
+	cfg.Secrets.Velero = VeleroSecrets{}
+	etcd := cfg.OpenCenter.Services["etcd-backup"].(*services.EtcdBackupConfig)
+	etcd.Enabled, etcd.StorageType, etcd.S3Endpoint = true, "none", "not-an-endpoint"
+	cfg.Secrets.EtcdBackup = EtcdBackupSecrets{}
+
+	report := ValidateReadiness(cfg)
+	for _, path := range []string{
+		"opencenter.services.harbor.s3_endpoint", "secrets.harbor.s3_access_key_id", "secrets.harbor.s3_secret_access_key",
+		"opencenter.services.velero.s3_endpoint", "secrets.etcd_backup.access_key_id",
+	} {
+		assertNoIssue(t, report, path)
+	}
+}
+
+func TestValidateServicesAllowsEnabledVeleroNone(t *testing.T) {
 	cfg, err := NewV2Default("velero-none", "kind")
 	if err != nil {
 		t.Fatal(err)
@@ -179,8 +200,8 @@ func TestValidateServicesRejectsEnabledVeleroNone(t *testing.T) {
 	cfg.OpenCenter.Services["velero"].(*services.VeleroConfig).Enabled = true
 
 	err = NewValidator().ValidateServices(cfg)
-	if err == nil || !strings.Contains(err.Error(), "storage_type none") {
-		t.Fatalf("expected enabled Velero none rejection, got %v", err)
+	if err != nil {
+		t.Fatalf("expected enabled Velero none to be valid, got %v", err)
 	}
 }
 

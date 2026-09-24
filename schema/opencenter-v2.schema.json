@@ -2802,6 +2802,9 @@
                     }
                   },
                   "type": "object"
+                },
+                "storage_type": {
+                  "type": "string"
                 }
               },
               "type": "object"
@@ -3137,7 +3140,8 @@
                 },
                 "storage_type": {
                   "enum": [
-                    "s3"
+                    "s3",
+                    "filesystem"
                   ],
                   "type": "string"
                 },
@@ -4871,6 +4875,9 @@
                     }
                   },
                   "type": "object"
+                },
+                "storage_type": {
+                  "type": "string"
                 }
               },
               "type": "object"
@@ -5206,7 +5213,8 @@
                 },
                 "storage_type": {
                   "enum": [
-                    "s3"
+                    "s3",
+                    "filesystem"
                   ],
                   "type": "string"
                 },
@@ -7016,6 +7024,9 @@
                     }
                   },
                   "type": "object"
+                },
+                "storage_type": {
+                  "type": "string"
                 }
               },
               "type": "object"
@@ -7351,7 +7362,8 @@
                 },
                 "storage_type": {
                   "enum": [
-                    "s3"
+                    "s3",
+                    "filesystem"
                   ],
                   "type": "string"
                 },

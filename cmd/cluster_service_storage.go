@@ -72,24 +72,28 @@ func runClusterServiceStorage(cmd *cobra.Command, operation string, mutating boo
 		}
 		return NewExitError(2, "load cluster configuration", err)
 	}
-	if strings.ToLower(strings.TrimSpace(cfg.OpenCenter.Infrastructure.Provider)) != "openstack" {
+	nonRemote := storageopenstack.IsNonRemoteBackend(service, flags.backend)
+	if !nonRemote && strings.ToLower(strings.TrimSpace(cfg.OpenCenter.Infrastructure.Provider)) != "openstack" {
 		return NewExitError(2, fmt.Sprintf("cluster provider is %q; OpenStack storage requires provider openstack", cfg.OpenCenter.Infrastructure.Provider), nil)
 	}
 	if _, err := storageServiceForCommand(cfg, service); err != nil {
 		return NewExitError(2, "invalid storage service", err)
 	}
-	if strings.TrimSpace(flags.cloudName) == "" {
-		return NewExitError(2, "--os-cloud is required", nil)
+	var adapter cloudopenstack.StorageAdapter
+	if !nonRemote {
+		if strings.TrimSpace(flags.cloudName) == "" {
+			return NewExitError(2, "--os-cloud is required", nil)
+		}
+		cloudsPath := strings.TrimSpace(flags.cloudsYAML)
+		if cloudsPath == "" {
+			cloudsPath = cloudopenstack.DefaultCloudsYAMLPath()
+		}
+		profile, err := cloudopenstack.LoadProfile(cloudsPath, flags.cloudName)
+		if err != nil {
+			return NewExitError(1, "load OpenStack cloud profile", err)
+		}
+		adapter = cloudopenstack.NewStorageAdapter(profile)
 	}
-	cloudsPath := strings.TrimSpace(flags.cloudsYAML)
-	if cloudsPath == "" {
-		cloudsPath = cloudopenstack.DefaultCloudsYAMLPath()
-	}
-	profile, err := cloudopenstack.LoadProfile(cloudsPath, flags.cloudName)
-	if err != nil {
-		return NewExitError(1, "load OpenStack cloud profile", err)
-	}
-	adapter := cloudopenstack.NewStorageAdapter(profile)
 	planned, err := storageopenstack.Plan(cmd.Context(), storageopenstack.PlanInput{Config: cfg, Options: opts, Adapter: adapter})
 	if err != nil {
 		return NewExitError(1, "plan OpenStack storage", err)

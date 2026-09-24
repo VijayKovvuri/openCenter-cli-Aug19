@@ -95,12 +95,14 @@ func TestPlanIncludesEtcdBackupAndVeleroWorkloadSecrets(t *testing.T) {
 func TestPlanOmitsNoneStorageArtifacts(t *testing.T) {
 	cfg := &v2.Config{
 		OpenCenter: v2.OpenCenterConfig{Services: map[string]any{
-			"loki":   &services.LokiConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "none"},
-			"velero": &services.VeleroConfig{BaseConfig: services.BaseConfig{Enabled: false}, StorageType: "none"},
+			"loki":        &services.LokiConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "none"},
+			"etcd-backup": &services.EtcdBackupConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "none"},
+			"velero":      &services.VeleroConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "none"},
 		}},
 		Secrets: v2.SecretsConfig{
-			Loki:   v2.LokiSecrets{S3AccessKeyID: "loki-access", S3SecretAccessKey: "loki-secret"},
-			Velero: v2.VeleroSecrets{AccessKeyID: "velero-access", SecretAccessKey: "velero-secret"},
+			Loki:       v2.LokiSecrets{S3AccessKeyID: "loki-access", S3SecretAccessKey: "loki-secret"},
+			EtcdBackup: v2.EtcdBackupSecrets{AccessKeyID: "etcd-access", SecretAccessKey: "etcd-secret"},
+			Velero:     v2.VeleroSecrets{AccessKeyID: "velero-access", SecretAccessKey: "velero-secret"},
 		},
 	}
 

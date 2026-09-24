@@ -13,6 +13,7 @@ type EtcdBackupConfig struct {
 	S3BucketName   string `yaml:"s3_bucket_name,omitempty" json:"s3_bucket_name,omitempty" jsonschema:"description=S3 bucket name"`
 	S3CredentialID string `yaml:"s3_credential_id,omitempty" json:"s3_credential_id,omitempty" jsonschema:"description=OpenStack EC2 credential ID"`
 	S3Region       string `yaml:"s3_region,omitempty" json:"s3_region,omitempty" jsonschema:"description=S3 region"`
+	StorageType    string `yaml:"storage_type,omitempty" json:"storage_type,omitempty" jsonschema:"description=etcd backup storage backend type,enum=s3,enum=none,default=s3"`
 }
 
 func init() {

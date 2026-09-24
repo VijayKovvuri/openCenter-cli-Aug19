@@ -35,9 +35,14 @@ func TestNewV2DefaultHarborSecretsUseDeterministicPlaceholders(t *testing.T) {
 func TestHarborStorageValidationRejectsUnsupportedStorageAndEndpoint(t *testing.T) {
 	cfg := validReadinessConfig(t, "kind")
 	harbor := cfg.OpenCenter.Services["harbor"].(*services.HarborConfig)
+	harbor.Enabled = true
 	harbor.StorageType = "filesystem"
-	if err := NewValidator().Validate(cfg); err == nil || !strings.Contains(err.Error(), "storage_type") {
-		t.Fatalf("Validate() error = %v, want unsupported Harbor storage type", err)
+	if err := NewValidator().Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v, want non-production filesystem to be valid", err)
+	}
+	cfg.OpenCenter.Infrastructure.Storage.Profile.Lifecycle = StorageLifecycleProduction
+	if err := NewValidator().Validate(cfg); err == nil || !strings.Contains(err.Error(), "filesystem") {
+		t.Fatalf("Validate() error = %v, want production filesystem rejection", err)
 	}
 
 	harbor.StorageType = "s3"

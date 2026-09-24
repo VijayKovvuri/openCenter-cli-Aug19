@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-velero
 title: "Velero"
 sidebar_label: Velero
@@ -13,6 +14,18 @@ tags: [velero, backup, disaster-recovery, services]
 ## Overview
 
 Velero provides backup and disaster recovery for Kubernetes cluster resources and persistent volumes.
+
+`storage_type: none` keeps the basic Velero release enabled but disables backup
+storage: no BackupStorageLocation, provider credentials, or backups are
+rendered. Velero remains installed, but it cannot create backups in this mode.
+
+```yaml
+opencenter:
+  services:
+    velero:
+      enabled: true
+      storage_type: none
+```
 
 ## Configuration
 
@@ -29,7 +42,7 @@ opencenter:
       s3_credential_id:
       s3_force_path_style: false
       s3_insecure: false
-      storage_type: s3             # default: s3; s3 | swift | gcs | azure
+      storage_type: s3             # default: s3; s3 | swift | gcs | azure | none
 ```
 
 | Field | Type | Default | Description |
@@ -43,15 +56,18 @@ opencenter:
 | `s3_credential_id` | string | — | OpenStack EC2 credential ID |
 | `s3_force_path_style` | bool | `false` | Force S3 path-style addressing |
 | `s3_insecure` | bool | `false` | Allow insecure (HTTP) connections |
-| `storage_type` | string | `s3` | `s3` \| `swift` \| `gcs` \| `azure` |
+| `storage_type` | string | `s3` | `s3` \| `swift` \| `gcs` \| `azure` \| `none` |
 
 ### Validation
 
-`internal/services/plugins/velero.go` (dead-code validator; see [Platform services architecture](../platform-services.md)) requires `backup_bucket` when `enabled: true`.
+`internal/services/plugins/velero.go` (dead-code validator; see [Platform services architecture](../platform-services.md)) requires `backup_bucket` when enabled unless `storage_type: none` is selected. `none` keeps the basic Velero deployment enabled but disables backup storage, provider credentials, and backups by omitting its BackupStorageLocation, provider, and credentials.
 
 ## Secrets
 
 The `internal/config/services/provider_registry.go` compatibility matrix picks a default `storage_type` from the infrastructure provider (`s3` for AWS/bare-metal/vSphere, `swift` for OpenStack, `gcs` for GCP, `azure` for Azure). `schema/opencenter-v2.schema.json` defines:
+
+For `storage_type: none`, the service-specific credentials are not needed or
+consumed. For an object-storage backend, the schema defines:
 
 ```yaml
 secrets:

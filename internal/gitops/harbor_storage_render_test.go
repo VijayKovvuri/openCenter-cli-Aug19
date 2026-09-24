@@ -132,6 +132,34 @@ func TestRenderHarborUsesConfiguredS3Endpoint(t *testing.T) {
 	}
 }
 
+func TestRenderHarborFilesystemUsesRegistryPVCWithoutS3(t *testing.T) {
+	cfg := newDefault("harbor-filesystem")
+	harbor := cfg.OpenCenter.Services["harbor"].(*configservices.HarborConfig)
+	harbor.StorageType = "filesystem"
+	harbor.RegistryVolumeSize = 24
+	harbor.StorageClass = "harbor-fast"
+
+	values := renderHarborValues(t, cfg)
+	storage := values["persistence"].(map[string]any)["imageChartStorage"].(map[string]any)
+	if got := storage["type"]; got != "filesystem" {
+		t.Fatalf("Harbor imageChartStorage.type = %v, want filesystem", got)
+	}
+	filesystem := storage["filesystem"].(map[string]any)
+	if got := filesystem["rootdirectory"]; got != "/storage" {
+		t.Fatalf("Harbor filesystem rootdirectory = %v, want /storage", got)
+	}
+	if _, ok := storage["s3"]; ok {
+		t.Fatal("Harbor filesystem values unexpectedly contain S3 configuration")
+	}
+	pvc := harborPVCValues(t, values)
+	if got := harborPVCSize(t, pvc, "registry"); got != "24Gi" {
+		t.Fatalf("Harbor registry PVC size = %q, want 24Gi", got)
+	}
+	if got := harborPVCStorageClass(t, pvc, "registry"); got != "harbor-fast" {
+		t.Fatalf("Harbor registry PVC storageClass = %q, want harbor-fast", got)
+	}
+}
+
 func mustRenderHarborTemplate(t *testing.T, cfg v2.Config) string {
 	t.Helper()
 	values, err := templateRenderer(harborTemplate)(cfg)

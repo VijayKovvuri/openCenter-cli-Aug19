@@ -144,6 +144,9 @@ func (v *ServiceProviderValidator) validateTempoStorageProvider(
 	cfg *TempoConfig,
 	infraProvider InfrastructureProvider,
 ) error {
+	if strings.EqualFold(strings.TrimSpace(cfg.StorageType), "filesystem") {
+		return nil
+	}
 	// If storage type is not set, auto-select
 	if cfg.StorageType == "" {
 		provider, err := v.registry.GetDefaultProvider("tempo", "storage", infraProvider)
@@ -170,7 +173,7 @@ func (v *ServiceProviderValidator) validateVeleroStorageProvider(
 	infraProvider InfrastructureProvider,
 ) error {
 	if strings.EqualFold(strings.TrimSpace(cfg.StorageType), string(StorageProviderNone)) {
-		return fmt.Errorf("velero: storage_type none cannot be used when Velero is enabled")
+		return nil
 	}
 	// If storage type is not set, auto-select
 	if cfg.StorageType == "" {

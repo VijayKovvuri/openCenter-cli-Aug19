@@ -517,6 +517,9 @@ func processSecrets(secrets []string, serviceName string, secretsCfg *v2.Secrets
 		"headlamp":     "Headlamp",
 		"weave-gitops": "WeaveGitOps",
 		"grafana":      "Grafana",
+		"tempo":        "Tempo",
+		"etcd-backup":  "EtcdBackup",
+		"velero":       "Velero",
 		"harbor":       "Harbor",
 		"alert-proxy":  "AlertProxy",
 		"vsphere-csi":  "VSphereCsi",
@@ -563,7 +566,7 @@ func validateServiceLegacy(serviceName string, serviceCfg any, secretsCfg *v2.Se
 			if storageType == "" {
 				storageType = "s3"
 			}
-			if storageType != "s3" {
+			if storageType != "s3" && storageType != "none" {
 				return fmt.Errorf("unsupported storage_type %q for service 'loki'; platform bulk data must use S3-compatible storage", storageType)
 			}
 			if storageType == "s3" {
@@ -579,10 +582,12 @@ func validateServiceLegacy(serviceName string, serviceCfg any, secretsCfg *v2.Se
 			return fmt.Errorf("missing required secret 'admin_password' for service 'keycloak'.\nExample: --secret=\"admin_password=your-password\"")
 		}
 	case "harbor":
-		accessMissing := strings.TrimSpace(secretsCfg.Harbor.S3AccessKeyID) == "" || strings.EqualFold(strings.TrimSpace(secretsCfg.Harbor.S3AccessKeyID), v2.PlaceholderSecret)
-		secretMissing := strings.TrimSpace(secretsCfg.Harbor.S3SecretAccessKey) == "" || strings.EqualFold(strings.TrimSpace(secretsCfg.Harbor.S3SecretAccessKey), v2.PlaceholderSecret)
-		if accessMissing != secretMissing {
-			return fmt.Errorf("both Harbor S3 access key and secret key must be provided.\nExample: --secret=\"s3_access_key_id=ACCESS\" --secret=\"s3_secret_access_key=SECRET\"")
+		if harbor, ok := serviceCfg.(*services.HarborConfig); ok && !strings.EqualFold(strings.TrimSpace(harbor.StorageType), "filesystem") {
+			accessMissing := strings.TrimSpace(secretsCfg.Harbor.S3AccessKeyID) == "" || strings.EqualFold(strings.TrimSpace(secretsCfg.Harbor.S3AccessKeyID), v2.PlaceholderSecret)
+			secretMissing := strings.TrimSpace(secretsCfg.Harbor.S3SecretAccessKey) == "" || strings.EqualFold(strings.TrimSpace(secretsCfg.Harbor.S3SecretAccessKey), v2.PlaceholderSecret)
+			if accessMissing != secretMissing {
+				return fmt.Errorf("both Harbor S3 access key and secret key must be provided.\nExample: --secret=\"s3_access_key_id=ACCESS\" --secret=\"s3_secret_access_key=SECRET\"")
+			}
 		}
 	}
 	return nil
@@ -594,12 +599,14 @@ func validateService(serviceName string, serviceCfg any, secretsCfg *v2.SecretsC
 
 func validateServiceWithConfig(serviceName string, serviceCfg any, secretsCfg *v2.SecretsConfig, cfg *v2.Config) error {
 	if serviceName == "harbor" {
-		accessMissing := strings.TrimSpace(secretsCfg.Harbor.S3AccessKeyID) == "" || strings.EqualFold(strings.TrimSpace(secretsCfg.Harbor.S3AccessKeyID), v2.PlaceholderSecret)
-		secretMissing := strings.TrimSpace(secretsCfg.Harbor.S3SecretAccessKey) == "" || strings.EqualFold(strings.TrimSpace(secretsCfg.Harbor.S3SecretAccessKey), v2.PlaceholderSecret)
-		if accessMissing != secretMissing {
-			return fmt.Errorf("both Harbor S3 access key and secret key must be provided.\nExample: --secret=\"s3_access_key_id=ACCESS\" --secret=\"s3_secret_access_key=SECRET\"")
-		}
 		if harbor, ok := serviceCfg.(*services.HarborConfig); ok {
+			filesystem := strings.EqualFold(strings.TrimSpace(harbor.StorageType), "filesystem")
+			managedObjectStorage := cfg != nil && v2.UsesManagedObjectStorage(cfg)
+			accessMissing := strings.TrimSpace(secretsCfg.Harbor.S3AccessKeyID) == "" || strings.EqualFold(strings.TrimSpace(secretsCfg.Harbor.S3AccessKeyID), v2.PlaceholderSecret)
+			secretMissing := strings.TrimSpace(secretsCfg.Harbor.S3SecretAccessKey) == "" || strings.EqualFold(strings.TrimSpace(secretsCfg.Harbor.S3SecretAccessKey), v2.PlaceholderSecret)
+			if !filesystem && !managedObjectStorage && accessMissing != secretMissing {
+				return fmt.Errorf("both Harbor S3 access key and secret key must be provided.\nExample: --secret=\"s3_access_key_id=ACCESS\" --secret=\"s3_secret_access_key=SECRET\"")
+			}
 			if err := v2.ValidateHarborConfig(harbor); err != nil {
 				return err
 			}
@@ -630,6 +637,8 @@ func validateServiceWithConfig(serviceName string, serviceCfg any, secretsCfg *v
 	}
 
 	switch backend {
+	case "none":
+		return nil
 	case "swift":
 		return fmt.Errorf("unsupported storage backend swift for service '%s'; migrate to the S3-compatible storage profile", serviceName)
 	case "s3":
@@ -828,6 +837,20 @@ func getServiceOptions(serviceName string) []ServiceOption {
 			{Name: "s3_force_path_style", Type: "boolean", Description: "Force S3 path style (required for MinIO)", Required: false},
 			{Name: "s3_insecure", Type: "boolean", Description: "Allow insecure S3 connections", Required: false},
 		}
+	case "tempo":
+		return []ServiceOption{
+			{Name: "storage_type", Type: "string", Description: "Storage backend type (s3)", Required: false},
+			{Name: "bucket_name", Type: "string", Description: "S3 bucket name", Required: false},
+			{Name: "s3_endpoint", Type: "string", Description: "S3 endpoint URL", Required: false},
+			{Name: "s3_region", Type: "string", Description: "S3 region", Required: false},
+		}
+	case "harbor":
+		return []ServiceOption{
+			{Name: "storage_type", Type: "string", Description: "Storage backend type (s3 or filesystem)", Required: false},
+			{Name: "s3_bucket", Type: "string", Description: "S3 bucket name for image storage", Required: false},
+			{Name: "s3_endpoint", Type: "string", Description: "S3 endpoint URL for image storage", Required: false},
+			{Name: "s3_region", Type: "string", Description: "S3 region for image storage", Required: false},
+		}
 	case "keycloak":
 		return []ServiceOption{
 			{Name: "realm", Type: "string", Description: "Keycloak realm name", Required: false},
@@ -850,8 +873,16 @@ func getServiceOptions(serviceName string) []ServiceOption {
 		}
 	case "velero":
 		return []ServiceOption{
+			{Name: "storage_type", Type: "string", Description: "Storage backend type (s3 or none)", Required: false},
 			{Name: "backup_bucket", Type: "string", Description: "Velero backup bucket name", Required: false},
 			{Name: "region", Type: "string", Description: "Velero backup region", Required: false},
+		}
+	case "etcd-backup":
+		return []ServiceOption{
+			{Name: "storage_type", Type: "string", Description: "Storage backend type (s3 or none)", Required: false},
+			{Name: "s3_bucket_name", Type: "string", Description: "etcd backup bucket name", Required: false},
+			{Name: "s3_endpoint", Type: "string", Description: "S3 endpoint URL", Required: false},
+			{Name: "s3_region", Type: "string", Description: "S3 region", Required: false},
 		}
 	case "alert-proxy":
 		return []ServiceOption{
@@ -887,6 +918,11 @@ func getServiceSecrets(serviceName string) []ServiceOption {
 			{Name: "s3_access_key_id", Type: "string", Description: "S3 access key ID (for S3 storage)", Required: false},
 			{Name: "s3_secret_access_key", Type: "string", Description: "S3 secret access key (for S3 storage)", Required: false},
 		}
+	case "tempo":
+		return []ServiceOption{
+			{Name: "access_key", Type: "string", Description: "S3 access key (for S3 storage)", Required: false},
+			{Name: "secret_key", Type: "string", Description: "S3 secret key (for S3 storage)", Required: false},
+		}
 	case "harbor":
 		return []ServiceOption{
 			{Name: "admin_password", Type: "string", Description: "Harbor administrator password", Required: true},
@@ -894,6 +930,16 @@ func getServiceSecrets(serviceName string) []ServiceOption {
 			{Name: "database_password", Type: "string", Description: "Harbor database password", Required: true},
 			{Name: "s3_access_key_id", Type: "string", Description: "Externally issued S3 access key ID for Harbor image storage", Required: true},
 			{Name: "s3_secret_access_key", Type: "string", Description: "Externally issued S3 secret access key for Harbor image storage", Required: true},
+		}
+	case "velero":
+		return []ServiceOption{
+			{Name: "access_key_id", Type: "string", Description: "S3 access key ID (for S3 storage)", Required: false},
+			{Name: "secret_access_key", Type: "string", Description: "S3 secret access key (for S3 storage)", Required: false},
+		}
+	case "etcd-backup":
+		return []ServiceOption{
+			{Name: "access_key_id", Type: "string", Description: "S3 access key ID (for S3 storage)", Required: false},
+			{Name: "secret_access_key", Type: "string", Description: "S3 secret access key (for S3 storage)", Required: false},
 		}
 	case "keycloak":
 		return []ServiceOption{

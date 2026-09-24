@@ -122,6 +122,23 @@ func TestHarborPlugin_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "filesystem storage does not require s3 settings",
+			config: &services.HarborConfig{
+				BaseConfig:  services.BaseConfig{Enabled: true},
+				StorageType: "filesystem",
+			},
+			wantErr: false,
+		},
+		{
+			name: "unsupported storage type",
+			config: &services.HarborConfig{
+				BaseConfig:  services.BaseConfig{Enabled: true},
+				StorageType: "swift",
+			},
+			wantErr: true,
+			errMsg:  "storage_type must be 's3' or 'filesystem'",
+		},
+		{
 			name: "external database requires host",
 			config: &services.HarborConfig{
 				BaseConfig: services.BaseConfig{

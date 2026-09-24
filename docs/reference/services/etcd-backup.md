@@ -1,8 +1,9 @@
 ---
+last_updated: 2026-09-24
 id: service-etcd-backup
 title: "etcd Backup"
 sidebar_label: etcd Backup
-description: etcd snapshot backup service configuration, S3 endpoint fields, and secrets.
+description: etcd snapshot backup service configuration, S3 endpoint fields, opt-out behavior, and secrets.
 doc_type: reference
 audience: "platform engineers, operators"
 tags: [etcd, backup, disaster-recovery, services]
@@ -12,7 +13,15 @@ tags: [etcd, backup, disaster-recovery, services]
 
 ## Overview
 
-The etcd backup service uploads etcd snapshots to an S3-compatible bucket. It is disabled by default.
+The etcd backup service uploads etcd snapshots to an S3-compatible bucket. It is disabled by default. Set `storage_type: none` for an explicit opt-out; the etcd upload CronJob and its S3 integration are omitted, so no etcd snapshots are uploaded and the service credentials are not consumed.
+
+```yaml
+opencenter:
+  services:
+    etcd-backup:
+      enabled: true
+      storage_type: none
+```
 
 ## Configuration
 
@@ -22,6 +31,7 @@ opencenter:
     etcd-backup:
       enabled: false               # default: false
       namespace: kube-system        # default: kube-system
+      storage_type: s3               # default: s3; s3 | none
       s3_host:
       s3_endpoint:
       s3_bucket_name:
@@ -38,6 +48,7 @@ opencenter:
 | `s3_bucket_name` | string | — | S3 bucket name |
 | `s3_credential_id` | string | — | OpenStack EC2 credential ID (non-secret lifecycle metadata, not a pod secret) |
 | `s3_region` | string | — | S3 region |
+| `storage_type` | string | `s3` | `s3` or `none`; `none` omits the S3 upload CronJob/integration |
 
 ## Secrets
 
@@ -48,7 +59,7 @@ secrets:
     secret_access_key:
 ```
 
-Global AWS credentials are not used as a fallback for `etcd-backup`.
+Global AWS credentials are not used as a fallback for `etcd-backup`. When `storage_type: none` is selected, the service-specific credentials are not consumed or referenced by rendered manifests because the S3 upload CronJob/integration is omitted.
 
 ## Dependencies
 

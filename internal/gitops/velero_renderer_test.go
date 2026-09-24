@@ -68,7 +68,7 @@ func TestVeleroRendererS3UsesEndpointPathStyleAndExistingSecret(t *testing.T) {
 func TestVeleroRendererNoneOmitsBackupStorageLocation(t *testing.T) {
 	cfg := mustNewGitOpsTestConfig("velero-none-render", "kind")
 	cfg.OpenCenter.Services["velero"] = &services.VeleroConfig{
-		BaseConfig:   services.BaseConfig{Enabled: false},
+		BaseConfig:   services.BaseConfig{Enabled: true},
 		StorageType:  "none",
 		BackupBucket: "must-not-render",
 		S3Endpoint:   "https://must-not-render.example",

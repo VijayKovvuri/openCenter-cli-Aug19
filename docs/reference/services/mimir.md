@@ -1,18 +1,41 @@
 ---
+last_updated: 2026-09-24
 id: service-mimir
 title: "Grafana Mimir"
 sidebar_label: Mimir
-description: Long-term metrics storage service configuration and defaults.
+description: Long-term metrics storage, local RustFS integration, and deployment limits.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [monitoring, metrics, mimir, services]
+tags: [monitoring, metrics, mimir, rustfs, services]
 ---
 
 > **Purpose:** For platform engineers and operators, documents the Mimir service's configuration surface.
 
 ## Overview
 
-Mimir provides long-term metrics storage. It has no service-specific configuration beyond the shared `BaseConfig` fields (`internal/config/services/default_services.go` registers it as `DefaultServiceConfig`).
+Mimir provides long-term metrics storage. For local development, its current
+deployment uses the S3-compatible RustFS storage profile. Mimir does not expose
+a service-level `storage_type`, `s3_endpoint`, or filesystem opt-out in the
+current deployment; do not add `storage_type: filesystem` or `storage_type: none`
+to the Mimir service.
+
+Select RustFS through the infrastructure storage profile (and enable Longhorn,
+as required by that profile):
+
+```yaml
+opencenter:
+  infrastructure:
+    storage:
+      profile:
+        lifecycle: non-production
+        pvc_provider: longhorn
+        object_storage_provider: rustfs
+  services:
+    longhorn:
+      enabled: true
+    mimir:
+      enabled: true
+```
 
 ## Configuration
 
@@ -31,7 +54,9 @@ opencenter:
 
 ## Secrets
 
-`schema/opencenter-v2.schema.json` defines `secrets.mimir.swift_application_credential_secret`; global AWS application credentials (`secrets.global.aws.application.*`) are also present in the schema for S3-backed setups.
+The legacy `secrets.mimir.swift_application_credential_secret` field remains
+in the schema for compatibility, but the local RustFS profile supplies the
+S3-compatible storage integration and does not require that external secret.
 
 ## Dependencies
 

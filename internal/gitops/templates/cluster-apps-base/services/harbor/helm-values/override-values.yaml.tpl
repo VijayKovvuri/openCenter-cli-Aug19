@@ -1,5 +1,6 @@
 {{- $harbor := index .OpenCenter.Services "harbor" -}}
 {{- $storageClass := $harbor.StorageClass | default .OpenCenter.Infrastructure.Storage.DefaultStorageClass -}}
+{{- $storageType := lower ($harbor.StorageType | default "s3") -}}
 externalURL: https://{{ $harbor.Hostname | default (printf "harbor.%s" .OpenCenter.Cluster.ClusterFQDN) }}
 logLevel: info
 expose:
@@ -8,25 +9,30 @@ persistence:
     enabled: true
     resourcePolicy: keep
     persistentVolumeClaim:
-        # Harbor requires registry PVC cache/state even when image blobs use object storage.
+        # The registry PVC is the image backend in filesystem mode.
         registry:
             size: {{ $harbor.RegistryVolumeSize | default 100 }}Gi
             storageClass: {{ $storageClass }}
         jobservice:
             jobLog:
-                size: {{ $harbor.JobserviceVolumeSize | default 5 }}Gi
+                size: {{ $harbor.JobserviceVolumeSize | default 10 }}Gi
                 storageClass: {{ $storageClass }}
         database:
             size: {{ $harbor.DatabaseVolumeSize | default 10 }}Gi
             storageClass: {{ $storageClass }}
         redis:
-            size: {{ $harbor.RedisVolumeSize | default 5 }}Gi
+            size: {{ $harbor.RedisVolumeSize | default 10 }}Gi
             storageClass: {{ $storageClass }}
         trivy:
-            size: {{ $harbor.TrivyVolumeSize | default 5 }}Gi
+            size: {{ $harbor.TrivyVolumeSize | default 10 }}Gi
             storageClass: {{ $storageClass }}
-    # Primary image blobs use object storage; registry PVC is cache/state, not blob storage.
+    # The registry PVC is the image backend in filesystem mode.
     imageChartStorage:
+{{- if eq $storageType "filesystem" }}
+        type: filesystem
+        filesystem:
+            rootdirectory: /storage
+{{- else }}
         type: s3
         s3:
             region: {{ .OpenCenter.Meta.Region }}
@@ -37,6 +43,7 @@ persistence:
             v4auth: true
             secure: true
             rootdirectory: images
+{{- end }}
 harborAdminPassword: {{ .Secrets.Harbor.AdminPassword | quote }}
 metrics:
     enabled: true

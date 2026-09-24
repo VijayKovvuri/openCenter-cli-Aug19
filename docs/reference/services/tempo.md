@@ -1,18 +1,39 @@
 ---
+last_updated: 2026-09-24
 id: service-tempo
 title: "Tempo"
 sidebar_label: Tempo
-description: Distributed tracing backend configuration, S3 storage backend, and unsupported Swift enum.
+description: Distributed tracing backend configuration, RustFS S3 storage, and unsupported filesystem and Swift modes.
 doc_type: reference
 audience: "operators, platform engineers"
-tags: [tempo, tracing, observability, s3, services]
+tags: [tempo, tracing, observability, s3, rustfs, services]
 ---
 
 > **Purpose:** For operators and platform engineers, documents Tempo's configuration fields, why `storage_type: swift` is rejected, and secrets.
 
 ## Overview
 
-Tempo is the distributed tracing backend for openCenter clusters.
+Tempo is the distributed tracing backend for openCenter clusters. Local
+development uses the S3-compatible RustFS service. Configure that endpoint as
+`storage_type: s3`; the current deployment does not provide a filesystem or
+`storage_type: none` opt-out.
+
+```yaml
+opencenter:
+  services:
+    tempo:
+      enabled: true
+      storage_type: s3
+      bucket_name: tempo-traces
+      s3_endpoint: http://rustfs:9000
+      s3_region: local
+      s3_force_path_style: true
+
+secrets:
+  tempo:
+    access_key: example-access
+    secret_key: example-secret
+```
 
 ## Configuration
 
@@ -37,10 +58,10 @@ opencenter:
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether Tempo is deployed |
 | `namespace` | string | `observability` | Namespace for Tempo resources |
-| `storage_type` | string | `s3` | Storage backend. `swift` is present in the schema enum for backward compatibility but is rejected — see below |
+| `storage_type` | string | `s3` | S3-compatible storage only in the current deployment. `swift` is retained in the schema for backward compatibility but rejected; filesystem and `none` are not supported |
 | `bucket_name` | string | — | Storage bucket/container name |
 | `volume_size` | int | — | Persistent volume size in GB |
-| `storage_class` | string | — | PVC storage class |
+| `storage_class` | string | — | Storage class for PVCs |
 | `s3_endpoint` | string | — | S3 endpoint URL |
 | `s3_region` | string | — | S3 region |
 | `s3_credential_id` | string | — | OpenStack EC2 credential ID |
@@ -51,7 +72,7 @@ The schema and `TempoConfig` also retain a full set of `swift_*` fields (`swift_
 
 ### Why Swift is rejected
 
-Tempo's binary has no Swift storage backend upstream — it supports only S3/S3-compatible, GCS, and Azure Blob, and fails at startup with `unknown backend swift`. `internal/services/plugins/tempo.go`'s validator (dead-code path; see [Platform services architecture](../platform-services.md)) explicitly rejects `storage_type: swift` with a message pointing operators to use `s3` against a Swift S3-compatible endpoint instead. The live enable-time check in `cmd/cluster_service.go` requires a configured `s3_endpoint` plus matched access/secret keys for the resolved backend.
+Tempo's binary has no Swift storage backend upstream — it supports only S3/S3-compatible, GCS, and Azure Blob, and fails at startup with `unknown backend swift`. `internal/services/plugins/tempo.go`'s validator (dead-code path; see [Platform services architecture](../platform-services.md)) explicitly rejects `storage_type: swift` with a message pointing operators to use `s3` against an S3-compatible endpoint instead. The live enable-time check in `cmd/cluster_service.go` requires a configured `s3_endpoint` plus matched access/secret keys. There is currently no filesystem fallback.
 
 ## Secrets
 

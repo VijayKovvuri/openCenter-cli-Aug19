@@ -57,8 +57,14 @@ func (p *HarborPlugin) validate(config interface{}) error {
 			return fmt.Errorf("harbor external_url must be a valid HTTP(S) URL")
 		}
 
-		// Validate S3 storage configuration
-		if cfg.StorageType == "s3" {
+		storageType := strings.ToLower(strings.TrimSpace(cfg.StorageType))
+		if storageType != "" && storageType != "s3" && storageType != "filesystem" {
+			return fmt.Errorf("storage_type must be 's3' or 'filesystem', got '%s'", cfg.StorageType)
+		}
+
+		// Validate S3 storage configuration. Filesystem storage uses Harbor's
+		// registry PVC and intentionally has no object-storage secret contract.
+		if storageType == "s3" {
 			if cfg.S3Bucket == "" {
 				return fmt.Errorf("s3_bucket is required when storage_type is s3")
 			}

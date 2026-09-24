@@ -663,6 +663,7 @@ func (r *readinessBuilder) validateServiceSecrets(cfg *Config) {
 	}
 	r.validateCertManagerSecrets(cfg)
 	r.validateEtcdBackupSecrets(cfg)
+	r.validateVeleroSecrets(cfg)
 	r.validateLokiSecrets(cfg)
 	r.validateTempoSecrets(cfg)
 	r.validateMimirSecrets(cfg)
@@ -705,6 +706,29 @@ func (r *readinessBuilder) validateKubePrometheusStackWebhookURL(cfg *Config) {
 	}
 }
 
+func (r *readinessBuilder) validateVeleroSecrets(cfg *Config) {
+	if !serviceEnabled(cfg, "velero") || ResolveVeleroStorageBackend(cfg) == "none" || UsesManagedObjectStorage(cfg) {
+		return
+	}
+	service, ok := configuredService(cfg, "velero").(*services.VeleroConfig)
+	if !ok || service == nil {
+		r.addError(CategoryServices, "opencenter.services.velero", fmt.Sprintf("velero has unexpected configuration type %T.", configuredService(cfg, "velero")), "Use the canonical Velero service configuration.")
+		return
+	}
+	if ResolveVeleroStorageBackend(cfg) != "s3" {
+		return
+	}
+	r.requireS3Endpoint("opencenter.services.velero.s3_endpoint", service.S3Endpoint, "Velero S3 storage requires a configured endpoint.")
+	if strings.TrimSpace(service.BackupBucket) == "" {
+		r.addError(CategoryServices, "opencenter.services.velero.backup_bucket", "Velero S3 storage requires a bucket name.", "Set a non-empty Velero backup bucket.")
+	}
+	if strings.TrimSpace(service.Region) == "" && strings.TrimSpace(service.S3Region) == "" {
+		r.addError(CategoryServices, "opencenter.services.velero.region", "Velero S3 storage requires a region.", "Set Velero region or s3_region.")
+	}
+	r.requireSecret("secrets.velero.access_key_id", cfg.Secrets.Velero.AccessKeyID, "Velero S3 storage requires an access key ID.")
+	r.requireSecret("secrets.velero.secret_access_key", cfg.Secrets.Velero.SecretAccessKey, "Velero S3 storage requires a secret access key.")
+}
+
 func (r *readinessBuilder) validateCertManagerSecrets(cfg *Config) {
 	if !serviceEnabled(cfg, "cert-manager") {
 		return
@@ -723,7 +747,7 @@ func (r *readinessBuilder) validateCertManagerSecrets(cfg *Config) {
 }
 
 func (r *readinessBuilder) validateEtcdBackupSecrets(cfg *Config) {
-	if !serviceEnabled(cfg, "etcd-backup") || UsesManagedObjectStorage(cfg) {
+	if !serviceEnabled(cfg, "etcd-backup") || storageBackendDoesNotUseObjectStorage(cfg, "etcd-backup") || UsesManagedObjectStorage(cfg) {
 		return
 	}
 	service := configuredService(cfg, "etcd-backup")
@@ -791,7 +815,7 @@ func (r *readinessBuilder) validateHarborSecrets(cfg *Config) {
 		return
 	}
 	harbor, _ := configuredService(cfg, "harbor").(*services.HarborConfig)
-	if !UsesManagedObjectStorage(cfg) {
+	if !storageBackendDoesNotUseObjectStorage(cfg, "harbor") && !UsesManagedObjectStorage(cfg) {
 		if harbor != nil {
 			r.requireS3Endpoint("opencenter.services.harbor.s3_endpoint", harbor.S3Endpoint, "Harbor S3 storage requires a configured endpoint.")
 		}

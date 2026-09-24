@@ -127,6 +127,12 @@ func (r *ServiceProviderRegistry) initializeCompatibilityMatrix() {
 	for _, serviceName := range []string{"loki", "velero", "tempo"} {
 		for _, infrastructureProvider := range []InfrastructureProvider{ProviderAWS, ProviderOpenStack, ProviderGCP, ProviderAzure, ProviderBareMetal, ProviderVSphere} {
 			r.registerCompatibility(serviceName, "storage", infrastructureProvider, StorageProviderS3, true, "")
+			if serviceName == "loki" || serviceName == "velero" {
+				r.registerCompatibility(serviceName, "storage", infrastructureProvider, StorageProviderNone, true, "")
+			}
+			if serviceName == "tempo" {
+				r.registerCompatibility(serviceName, "storage", infrastructureProvider, ServiceProviderType("filesystem"), true, "")
+			}
 			r.registerCompatibility(serviceName, "storage", infrastructureProvider, StorageProviderSwift, false, "Swift is no longer supported; migrate to S3-compatible storage")
 			r.registerCompatibility(serviceName, "storage", infrastructureProvider, StorageProviderGCS, false, "GCS is not a platform bulk-data contract; use an S3-compatible endpoint")
 			r.registerCompatibility(serviceName, "storage", infrastructureProvider, StorageProviderAzure, false, "Azure Blob is not a platform bulk-data contract; use an S3-compatible endpoint")

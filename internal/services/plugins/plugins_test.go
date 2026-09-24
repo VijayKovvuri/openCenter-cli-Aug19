@@ -134,19 +134,36 @@ func TestVeleroPlugin(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	t.Run("Validate disabled filesystem storage", func(t *testing.T) {
-		cfg := &services.VeleroConfig{StorageType: "none"}
-		assert.NoError(t, plugin.Validate(cfg))
-	})
-
-	t.Run("Reject enabled filesystem storage", func(t *testing.T) {
+	t.Run("Validate enabled opt-out storage", func(t *testing.T) {
 		cfg := &services.VeleroConfig{
 			BaseConfig:  services.BaseConfig{Enabled: true},
 			StorageType: "none",
 		}
-		err := plugin.Validate(cfg)
+		assert.NoError(t, plugin.Validate(cfg))
+	})
+
+}
+
+func TestEtcdBackupPlugin(t *testing.T) {
+	plugin := NewEtcdBackupPlugin()
+
+	t.Run("Validate none opt-out", func(t *testing.T) {
+		cfg := &services.EtcdBackupConfig{
+			BaseConfig:  services.BaseConfig{Enabled: true},
+			StorageType: "none",
+		}
+		assert.NoError(t, plugin.Validate(cfg))
+	})
+
+	t.Run("Validate S3 compatibility", func(t *testing.T) {
+		cfg := &services.EtcdBackupConfig{StorageType: "s3"}
+		assert.NoError(t, plugin.Validate(cfg))
+	})
+
+	t.Run("Reject unsupported storage type", func(t *testing.T) {
+		err := plugin.Validate(&services.EtcdBackupConfig{StorageType: "swift"})
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot be used when Velero is enabled")
+		assert.Contains(t, err.Error(), "must be 's3' or 'none'")
 	})
 }
 

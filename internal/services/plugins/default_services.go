@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/opencenter-cloud/opencenter-cli/internal/config/services"
 	svc "github.com/opencenter-cloud/opencenter-cli/internal/services"
@@ -268,8 +269,17 @@ func NewEtcdBackupPlugin() svc.ServicePlugin {
 
 // validate implements etcd-backup specific validation
 func (p *EtcdBackupPlugin) validate(config interface{}) error {
-	// Validation is handled by validators
-	// This method is here to satisfy the ServicePlugin interface
+	cfg, ok := config.(*services.EtcdBackupConfig)
+	if !ok {
+		return fmt.Errorf("invalid config type for etcd-backup: expected *EtcdBackupConfig")
+	}
+
+	storageType := strings.ToLower(strings.TrimSpace(cfg.StorageType))
+	if storageType != "" && storageType != "s3" && storageType != "none" {
+		return fmt.Errorf("etcd-backup storage_type must be 's3' or 'none'")
+	}
+	// `none` is an explicit opt-out. The GitOps renderer emits no snapshot
+	// upload workload or S3 integration for it.
 	return nil
 }
 

@@ -103,6 +103,22 @@ func TestEtcdBackupFullAndSinglePlansHaveIdenticalOwnedOutputs(t *testing.T) {
 	require.Equal(t, []string{"cronjob.yaml", "secret.yaml"}, parsedAfter.Resources)
 }
 
+func TestEtcdBackupNoneOmitsUploadWorkloadAndIntegration(t *testing.T) {
+	cfg := etcdBackupTestConfig(t, "etcd-none-render")
+	service := cfg.OpenCenter.Services["etcd-backup"].(*services.EtcdBackupConfig)
+	service.StorageType = "none"
+	cfg.Secrets.EtcdBackup.AccessKeyID = "must-not-render"
+	cfg.Secrets.EtcdBackup.SecretAccessKey = "must-not-render"
+
+	actions, _, err := planClusterAppActionsWithArtifacts(cfg)
+	require.NoError(t, err)
+	for _, action := range actions {
+		require.NotEqual(t, "service-etcd-backup", action.Owner)
+		require.NotContains(t, action.Output, "services/etcd-backup")
+		require.NotContains(t, action.Output, "etcd-backup.yaml")
+	}
+}
+
 type renderedEtcdBackupKustomization struct {
 	Resources          []string `yaml:"resources"`
 	ConfigMapGenerator []struct {

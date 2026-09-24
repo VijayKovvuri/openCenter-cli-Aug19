@@ -35,7 +35,7 @@ resources:
 {{- if (index .OpenCenter.Services "olm").Enabled }}
   - ./olm.yaml
 {{- end }}
-{{- if (index .OpenCenter.Services "etcd-backup").Enabled }}
+{{- if and (index .OpenCenter.Services "etcd-backup").Enabled (ne ((index .OpenCenter.Services "etcd-backup").StorageType | trim | lower) "none") }}
   - ./etcd-backup.yaml
 {{- end }}
 

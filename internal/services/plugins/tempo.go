@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/opencenter-cloud/opencenter-cli/internal/config/services"
 	svc "github.com/opencenter-cloud/opencenter-cli/internal/services"
@@ -51,7 +52,8 @@ func (p *TempoPlugin) validate(config interface{}) error {
 
 	// Basic validation
 	if cfg.IsEnabled() && cfg.StorageType != "" {
-		if cfg.StorageType != "s3" && cfg.StorageType != "swift" {
+		storageType := strings.ToLower(strings.TrimSpace(cfg.StorageType))
+		if storageType != "s3" && storageType != "swift" {
 			return fmt.Errorf("storage_type must be 's3' or 'swift', got '%s'", cfg.StorageType)
 		}
 
@@ -62,12 +64,12 @@ func (p *TempoPlugin) validate(config interface{}) error {
 		// swift_* fields and the enum value are retained for backward-compatibility
 		// (no schema removal); use storage_type: s3 against the Swift S3-compatible
 		// endpoint instead.
-		if cfg.StorageType == "swift" {
+		if storageType == "swift" {
 			return fmt.Errorf("tempo storage_type 'swift' is not supported: Tempo has no Swift storage backend upstream (supports s3/s3-compatible, gcs, azure). Use storage_type: s3 (e.g. against the Swift S3-compatible endpoint)")
 		}
 
 		// S3-specific validation
-		if cfg.StorageType == "s3" {
+		if storageType == "s3" {
 			if cfg.S3Endpoint == "" {
 				return fmt.Errorf("s3_endpoint is required when storage_type is 's3'")
 			}

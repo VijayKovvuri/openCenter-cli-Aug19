@@ -150,9 +150,9 @@ func validateCondition(condition *Condition) error {
 		return err
 	}
 	switch condition.Operator {
-	case ConditionOperatorEquals:
+	case ConditionOperatorEquals, ConditionOperatorNotEquals:
 		if strings.TrimSpace(condition.Value) == "" {
-			return fmt.Errorf("equals requires a value")
+			return fmt.Errorf("%s requires a value", condition.Operator)
 		}
 	case ConditionOperatorExists, ConditionOperatorTrue, ConditionOperatorFalse:
 		if strings.TrimSpace(condition.Value) != "" {

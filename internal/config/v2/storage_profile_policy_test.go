@@ -68,13 +68,6 @@ func TestStorageProfilePolicy(t *testing.T) {
 			issuePaths: []string{"opencenter.services.loki.storage_type"},
 		},
 		{
-			name: "local filesystem bulk backend is rejected",
-			configure: func(cfg *Config) {
-				cfg.OpenCenter.Services["tempo"].(*services.TempoConfig).StorageType = "filesystem"
-			},
-			issuePaths: []string{"opencenter.services.tempo.storage_type"},
-		},
-		{
 			name: "non-production RustFS needs no external object credentials",
 			configure: func(cfg *Config) {
 				cfg.OpenCenter.Infrastructure.Storage.Profile = StorageProfileConfig{Lifecycle: StorageLifecycleNonProduction, PVCProvider: StoragePVCProviderLonghorn, ObjectStorageProvider: StorageObjectProviderRustFS}

@@ -1,18 +1,35 @@
 ---
+last_updated: 2026-09-24
 id: service-loki
 title: "Loki"
 sidebar_label: Loki
-description: Log aggregation service configuration, S3 and Swift storage backends, and secret fallback.
+description: Log aggregation service configuration, object-storage backends, filesystem mode, and secrets.
 doc_type: reference
 audience: "operators, platform engineers"
-tags: [loki, logging, observability, s3, swift, services]
+tags: [loki, logging, observability, s3, swift, filesystem, services]
 ---
 
 > **Purpose:** For operators and platform engineers, documents Loki's configuration fields, storage backends, secrets, and validation.
 
 ## Overview
 
-Loki is the log aggregation backend for openCenter clusters, with S3 or Swift object storage.
+Loki is the log aggregation backend for openCenter clusters. `s3` and `swift`
+use object storage; `none` is Loki's filesystem/single-binary mode. Selecting
+`none` is an explicit local or small-cluster mode, not a service disablement.
+
+```yaml
+opencenter:
+  services:
+    loki:
+      enabled: true
+      storage_type: none
+      volume_size: 10
+      storage_class: standard
+```
+
+In this mode the deployment uses one Loki binary and a PVC-backed filesystem;
+the distributed read/write/backend components and object-storage credentials
+are not used.
 
 ## Configuration
 
@@ -22,7 +39,7 @@ opencenter:
     loki:
       enabled: true                  # default: true
       namespace: observability        # default: observability
-      storage_type: swift              # default: swift; s3 | swift
+      storage_type: swift              # default: swift; s3 | swift | none
       bucket_name:
       volume_size:
       storage_class:
@@ -52,7 +69,7 @@ opencenter:
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether Loki is deployed |
 | `namespace` | string | `observability` | Namespace for Loki resources |
-| `storage_type` | string | `swift` | `s3` or `swift` |
+| `storage_type` | string | `swift` | `s3`, `swift`, or `none`; `none` selects filesystem/single-binary mode |
 | `bucket_name` | string | — | Storage bucket/container name |
 | `volume_size` | int | — | Persistent volume size in GB |
 | `storage_class` | string | — | PVC storage class |
@@ -74,7 +91,7 @@ opencenter:
 
 ### Validation
 
-`internal/services/plugins/loki.go` (dead-code validator; see [Platform services architecture](../platform-services.md)) requires `swift_auth_url` when `storage_type: swift` and `s3_endpoint` when `storage_type: s3`. The live path in `cmd/cluster_service.go` requires, for the resolved backend: a configured `s3_endpoint` plus matched S3 access/secret keys for `s3`, or a matched Swift application-credential ID/secret for `swift`.
+`internal/services/plugins/loki.go` (dead-code validator; see [Platform services architecture](../platform-services.md)) requires `swift_auth_url` when `storage_type: swift` and `s3_endpoint` when `storage_type: s3`. The live path in `cmd/cluster_service.go` requires, for the resolved backend: a configured `s3_endpoint` plus matched S3 access/secret keys for `s3`, or a matched Swift application-credential ID/secret for `swift`. `storage_type: none` requires neither object-storage settings nor credentials.
 
 ## Secrets
 

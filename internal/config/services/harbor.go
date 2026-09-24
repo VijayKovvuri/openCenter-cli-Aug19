@@ -14,7 +14,7 @@ type HarborConfig struct {
 	ExternalURL string `yaml:"external_url,omitempty" json:"external_url,omitempty" jsonschema:"description=External URL for Harbor"`
 
 	// Storage
-	StorageType          string `yaml:"storage_type,omitempty" json:"storage_type,omitempty" validate:"oneof=s3" jsonschema:"description=Storage backend type,enum=s3,default=s3"`
+	StorageType          string `yaml:"storage_type,omitempty" json:"storage_type,omitempty" validate:"oneof=s3 filesystem" jsonschema:"description=Storage backend type,enum=s3,enum=filesystem,default=s3"`
 	RegistryVolumeSize   int    `yaml:"registry_volume_size,omitempty" json:"registry_volume_size,omitempty" validate:"min=1" jsonschema:"description=Registry PVC size in GB; retained for compatibility and required Harbor cache/state,default=100"`
 	JobserviceVolumeSize int    `yaml:"jobservice_volume_size,omitempty" json:"jobservice_volume_size,omitempty" validate:"min=1" jsonschema:"description=Harbor jobservice log PVC size in GB (min 10 on Cinder-backed regions e.g. Rackspace SJC3),default=10"`
 	DatabaseVolumeSize   int    `yaml:"database_volume_size,omitempty" json:"database_volume_size,omitempty" validate:"min=1" jsonschema:"description=Harbor internal database PVC size in GB,default=10"`

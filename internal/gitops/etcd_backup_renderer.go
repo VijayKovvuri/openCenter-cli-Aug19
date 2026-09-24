@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/opencenter-cloud/opencenter-cli/internal/config/services"
 	v2 "github.com/opencenter-cloud/opencenter-cli/internal/config/v2"
 	"github.com/opencenter-cloud/opencenter-cli/internal/secretartifacts"
 )
@@ -78,6 +79,9 @@ func planEtcdBackupDynamicActions(cfg v2.Config, artifacts []secretartifacts.Art
 	if !exists || IsServiceDisabled(service) {
 		return nil, nil
 	}
+	if etcdBackupStorageType(service) == "none" {
+		return nil, nil
+	}
 
 	content, err := renderInlineTemplateContent(
 		etcdBackupKustomizationTemplate,
@@ -114,4 +118,16 @@ func planEtcdBackupDynamicActions(cfg v2.Config, artifacts []secretartifacts.Art
 			Content: fluxContent,
 		},
 	}, nil
+}
+
+func etcdBackupStorageType(service any) string {
+	cfg, ok := service.(*services.EtcdBackupConfig)
+	if !ok || cfg == nil {
+		return "s3"
+	}
+	storageType := strings.ToLower(strings.TrimSpace(cfg.StorageType))
+	if storageType == "" {
+		return "s3"
+	}
+	return storageType
 }
