@@ -90,6 +90,10 @@ func Plan(cfg *v2.Config) ([]Artifact, error) {
 
 	byPath := make(map[string]*Artifact)
 	for _, source := range sources {
+		if (source.name == "loki" && v2.ResolveObjectStorageBackend(cfg, "loki") == "none") ||
+			(source.name == "velero" && v2.ResolveVeleroStorageBackend(cfg) == "none") {
+			continue
+		}
 		payload, err := normalize(source.data)
 		if err != nil {
 			return nil, fmt.Errorf("normalize %s secrets: %w", source.name, err)
@@ -188,6 +192,9 @@ func etcdBackupPayload(cfg *v2.Config) map[string]interface{} {
 }
 
 func veleroPayload(cfg *v2.Config) map[string]interface{} {
+	if v2.ResolveVeleroStorageBackend(cfg) == "none" {
+		return nil
+	}
 	access, secret := cfg.Secrets.Velero.AccessKeyID, cfg.Secrets.Velero.SecretAccessKey
 	if strings.TrimSpace(access) == "" && strings.TrimSpace(secret) == "" {
 		return nil

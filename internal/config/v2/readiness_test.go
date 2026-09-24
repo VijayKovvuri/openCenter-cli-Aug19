@@ -155,6 +155,35 @@ func TestValidateReadinessServiceSecretsOnlyForEnabledServices(t *testing.T) {
 	assertNoIssue(t, report, "secrets.grafana.admin_password")
 }
 
+func TestValidateReadinessLokiNoneSkipsObjectStorageChecks(t *testing.T) {
+	cfg := validReadinessConfig(t, "openstack")
+	loki := cfg.OpenCenter.Services["loki"].(*services.LokiConfig)
+	loki.StorageType = "none"
+	loki.S3Endpoint = "not-an-endpoint"
+	loki.BucketName = "must-not-be-required"
+	cfg.Secrets.Loki.S3AccessKeyID = ""
+	cfg.Secrets.Loki.S3SecretAccessKey = ""
+
+	report := ValidateReadiness(cfg)
+	assertNoIssue(t, report, "opencenter.services.loki.s3_endpoint")
+	assertNoIssue(t, report, "secrets.loki.s3_access_key_id")
+	assertNoIssue(t, report, "secrets.loki.s3_secret_access_key")
+}
+
+func TestValidateServicesRejectsEnabledVeleroNone(t *testing.T) {
+	cfg, err := NewV2Default("velero-none", "kind")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.OpenCenter.Services["velero"].(*services.VeleroConfig).StorageType = "none"
+	cfg.OpenCenter.Services["velero"].(*services.VeleroConfig).Enabled = true
+
+	err = NewValidator().ValidateServices(cfg)
+	if err == nil || !strings.Contains(err.Error(), "storage_type none") {
+		t.Fatalf("expected enabled Velero none rejection, got %v", err)
+	}
+}
+
 func TestValidateReadinessInternalOIDCDefersBootstrapGeneratedClientSecrets(t *testing.T) {
 	cfg := validReadinessConfig(t, "kind")
 	cfg.OpenCenter.Identity.OIDC.Enabled = true

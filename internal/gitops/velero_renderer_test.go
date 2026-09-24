@@ -64,3 +64,49 @@ func TestVeleroRendererS3UsesEndpointPathStyleAndExistingSecret(t *testing.T) {
 	require.Contains(t, rendered, "s3ForcePathStyle: true")
 	require.Contains(t, rendered, "existingSecret: velero-cloud-credentials")
 }
+
+func TestVeleroRendererNoneOmitsBackupStorageLocation(t *testing.T) {
+	cfg := mustNewGitOpsTestConfig("velero-none-render", "kind")
+	cfg.OpenCenter.Services["velero"] = &services.VeleroConfig{
+		BaseConfig:   services.BaseConfig{Enabled: false},
+		StorageType:  "none",
+		BackupBucket: "must-not-render",
+		S3Endpoint:   "https://must-not-render.example",
+	}
+
+	spec, ok := newBuiltInRenderCatalog().Lookup("velero")
+	require.True(t, ok)
+	rendered, err := spec.OverrideValuesRenderer(cfg)
+	require.NoError(t, err)
+	require.NotContains(t, rendered, "backupStorageLocation")
+	require.NotContains(t, rendered, "must-not-render")
+	require.NotContains(t, rendered, "credentials:")
+}
+
+func TestLokiRendererNoneUsesFilesystemSingleBinaryPVC(t *testing.T) {
+	cfg := mustNewGitOpsTestConfig("loki-none-render", "kind")
+	cfg.OpenCenter.Services["loki"] = &services.LokiConfig{
+		BaseConfig:   services.BaseConfig{Enabled: true},
+		StorageType:  "none",
+		BucketName:   "must-not-render",
+		S3Endpoint:   "https://must-not-render.example",
+		VolumeSize:   12,
+		StorageClass: "local-path",
+	}
+
+	spec, ok := newBuiltInRenderCatalog().Lookup("loki")
+	require.True(t, ok)
+	rendered, err := spec.OverrideValuesRenderer(cfg)
+	require.NoError(t, err)
+	require.Contains(t, rendered, "deploymentMode: SingleBinary")
+	require.Contains(t, rendered, "type: filesystem")
+	require.Contains(t, rendered, "replicas: 1")
+	require.Contains(t, rendered, "enabled: true")
+	require.Contains(t, rendered, "size: 12Gi")
+	require.Contains(t, rendered, "storageClass: local-path")
+	require.Contains(t, rendered, "object_store: filesystem")
+	require.NotContains(t, rendered, "bucketNames:")
+	require.NotContains(t, rendered, "must-not-render")
+	require.NotContains(t, rendered, "accessKeyId:")
+	require.NotContains(t, rendered, "secretAccessKey:")
+}

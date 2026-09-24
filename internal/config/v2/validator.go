@@ -53,6 +53,29 @@ func ResolveObjectStorageBackend(cfg *Config, serviceName string) string {
 	return "s3"
 }
 
+// ResolveVeleroStorageBackend returns Velero's configured backend, or the
+// provider-specific default when it is omitted.
+func ResolveVeleroStorageBackend(cfg *Config) string {
+	if service := configuredService(cfg, "velero"); service != nil {
+		if velero, ok := service.(*services.VeleroConfig); ok {
+			if storageType := strings.ToLower(strings.TrimSpace(velero.StorageType)); storageType != "" {
+				return storageType
+			}
+		}
+	}
+	if cfg != nil {
+		switch strings.ToLower(strings.TrimSpace(cfg.OpenCenter.Infrastructure.Provider)) {
+		case "openstack":
+			return "swift"
+		case "gcp":
+			return "gcs"
+		case "azure":
+			return "azure"
+		}
+	}
+	return "s3"
+}
+
 func configuredService(cfg *Config, serviceName string) any {
 	if cfg == nil {
 		return nil
@@ -420,6 +443,15 @@ func (v *defaultValidator) ValidateDeployment(cfg *Config) error {
 func (v *defaultValidator) ValidateServices(cfg *Config) error {
 	if cfg == nil {
 		return nil
+	}
+	if service := configuredService(cfg, "velero"); service != nil {
+		velero, ok := service.(*services.VeleroConfig)
+		if !ok {
+			return fmt.Errorf("velero service has unexpected configuration type %T", service)
+		}
+		if velero.Enabled && strings.EqualFold(strings.TrimSpace(velero.StorageType), "none") {
+			return fmt.Errorf("velero storage_type none cannot be used when Velero is enabled")
+		}
 	}
 	if service, ok := cfg.OpenCenter.Services["harbor"]; ok {
 		harbor, ok := service.(*services.HarborConfig)

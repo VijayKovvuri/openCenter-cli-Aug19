@@ -92,6 +92,25 @@ func TestPlanIncludesEtcdBackupAndVeleroWorkloadSecrets(t *testing.T) {
 	require.Equal(t, "[default]\naws_access_key_id=velero-access\naws_secret_access_key=velero-secret\n", velero.Payload["cloud"])
 }
 
+func TestPlanOmitsNoneStorageArtifacts(t *testing.T) {
+	cfg := &v2.Config{
+		OpenCenter: v2.OpenCenterConfig{Services: map[string]any{
+			"loki":   &services.LokiConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "none"},
+			"velero": &services.VeleroConfig{BaseConfig: services.BaseConfig{Enabled: false}, StorageType: "none"},
+		}},
+		Secrets: v2.SecretsConfig{
+			Loki:   v2.LokiSecrets{S3AccessKeyID: "loki-access", S3SecretAccessKey: "loki-secret"},
+			Velero: v2.VeleroSecrets{AccessKeyID: "velero-access", SecretAccessKey: "velero-secret"},
+		},
+	}
+
+	artifacts, err := Plan(cfg)
+	require.NoError(t, err)
+	for _, artifact := range artifacts {
+		require.NotContains(t, []string{"loki", "velero"}, artifact.TargetService)
+	}
+}
+
 // TestPlanCertManagerExcludesNestedCredentialMaps verifies the cert-manager
 // secret.yaml payload never contains the nested AWS/Cloudflare credential maps.
 // Those are rendered as flat per-credential Secrets by the cert-manager renderer;

@@ -151,14 +151,16 @@ type veleroTemplateData struct {
 
 func veleroRenderer(cfg v2.Config) (string, error) {
 	provider := strings.ToLower(strings.TrimSpace(cfg.OpenCenter.Infrastructure.Provider))
-	storageType := ""
+	storageType := v2.ResolveVeleroStorageBackend(&cfg)
 	bucket := ""
 	region := ""
 	s3Endpoint := ""
 	s3ForcePathStyle := false
 	s3Insecure := false
 	if service, ok := cfg.OpenCenter.Services["velero"].(*services.VeleroConfig); ok && service != nil {
-		storageType = strings.ToLower(strings.TrimSpace(service.StorageType))
+		if configured := strings.ToLower(strings.TrimSpace(service.StorageType)); configured != "" {
+			storageType = configured
+		}
 		bucket = strings.TrimSpace(service.BackupBucket)
 		region = strings.TrimSpace(service.Region)
 		s3Endpoint = strings.TrimSpace(service.S3Endpoint)
@@ -166,17 +168,8 @@ func veleroRenderer(cfg v2.Config) (string, error) {
 		s3Insecure = service.S3Insecure
 	}
 
-	if storageType == "" {
-		switch provider {
-		case "openstack":
-			storageType = "swift"
-		case "gcp":
-			storageType = "gcs"
-		case "azure":
-			storageType = "azure"
-		default:
-			storageType = "s3"
-		}
+	if storageType == "none" {
+		return "---\n...\n", nil
 	}
 
 	data := veleroTemplateData{
@@ -288,10 +281,35 @@ const lokiTemplate = `{{- $loki := index .OpenCenter.Services "loki" -}}
 {{- $storageType := objectStorageBackend "loki" -}}
 {{- $bucketName := $loki.BucketName | default (printf "%s-loki" .OpenCenter.Meta.Name) -}}
 {{- $storageClass := $loki.StorageClass | default .OpenCenter.Infrastructure.Storage.DefaultStorageClass -}}
+{{- if eq $storageType "none" }}
+deploymentMode: SingleBinary
+singleBinary:
+    replicas: 1
+    persistence:
+        enabled: true
+        size: {{ $loki.VolumeSize | default 10 }}Gi
+        storageClass: {{ $storageClass }}
+read:
+    replicas: 0
+write:
+    replicas: 0
+backend:
+    replicas: 0
+{{- end }}
 global:
     dnsService: coredns
 loki:
+{{- if eq $storageType "none" }}
+    commonConfig:
+        replication_factor: 1
+{{- end }}
     storage:
+{{- if eq $storageType "none" }}
+        type: filesystem
+        filesystem:
+            chunks_directory: /var/loki/chunks
+            rules_directory: /var/loki/rules
+{{- else }}
         bucketNames:
             chunks: {{ $bucketName }}
             ruler: {{ $bucketName }}
@@ -323,15 +341,17 @@ loki:
             backoff_config: {}
             disable_dualstack: false
 {{- end }}
+{{ end }}
     schemaConfig:
         configs:
             - from: "2024-04-01"
               store: tsdb
-              object_store: {{ $storageType }}
+              object_store: {{ if eq $storageType "none" }}filesystem{{ else }}{{ $storageType }}{{ end }}
               schema: v13
               index:
                   prefix: loki_index_
                   period: 24h
+{{- if ne $storageType "none" }}
 write:
     # Pin storageClass so PVCs never rely on the ambiguous cluster default during
     # the bootstrap window (transient Longhorn default / Cinder SC not yet created).
@@ -379,6 +399,7 @@ backend:
                               app.kubernetes.io/name: loki
                               app.kubernetes.io/instance: loki
                               app.kubernetes.io/component: backend
+{{- end }}
 `
 
 const tempoTemplate = `{{- $tempo := index .OpenCenter.Services "tempo" -}}

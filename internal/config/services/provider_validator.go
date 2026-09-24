@@ -15,6 +15,7 @@ package services
 
 import (
 	"fmt"
+	"strings"
 )
 
 // ServiceProviderValidator validates service provider compatibility with infrastructure
@@ -115,6 +116,9 @@ func (v *ServiceProviderValidator) validateLokiStorageProvider(
 	cfg *LokiConfig,
 	infraProvider InfrastructureProvider,
 ) error {
+	if strings.EqualFold(strings.TrimSpace(cfg.StorageType), string(StorageProviderNone)) {
+		return nil
+	}
 	// If storage type is not set, auto-select
 	if cfg.StorageType == "" {
 		provider, err := v.registry.GetDefaultProvider("loki", "storage", infraProvider)
@@ -165,6 +169,9 @@ func (v *ServiceProviderValidator) validateVeleroStorageProvider(
 	cfg *VeleroConfig,
 	infraProvider InfrastructureProvider,
 ) error {
+	if strings.EqualFold(strings.TrimSpace(cfg.StorageType), string(StorageProviderNone)) {
+		return fmt.Errorf("velero: storage_type none cannot be used when Velero is enabled")
+	}
 	// If storage type is not set, auto-select
 	if cfg.StorageType == "" {
 		provider, err := v.registry.GetDefaultProvider("velero", "storage", infraProvider)

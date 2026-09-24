@@ -9,6 +9,7 @@ import (
 	"github.com/opencenter-cloud/opencenter-cli/internal/localdev/flux"
 	"github.com/opencenter-cloud/opencenter-cli/internal/localdev/gitea"
 	"github.com/opencenter-cloud/opencenter-cli/internal/localdev/gitops"
+	"github.com/opencenter-cloud/opencenter-cli/internal/localdev/rustfs"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ func newRootCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "opencenter-local",
-		Short:         "Local Kind + Gitea workflow plugin for openCenter",
+		Short:         "Local Kind + Gitea + RustFS workflow plugin for openCenter",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -39,10 +40,205 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "override openCenter config directory")
 
 	cmd.AddCommand(newGiteaCmd(&stateDir))
+	cmd.AddCommand(newRustFSCmd(&stateDir))
 	cmd.AddCommand(newGitOpsCmd(&stateDir))
 	cmd.AddCommand(newFluxCmd(&stateDir))
 
 	return cmd
+}
+
+func newRustFSCmd(stateDir *string) *cobra.Command {
+	var runtime string
+	var image string
+	var credentialsFile string
+	var apiPort int
+	var consolePort int
+	var kindNetwork string
+
+	settings := func(command *cobra.Command) rustfs.Settings {
+		result := rustfs.DefaultSettings(runtime)
+		changed := func(name string) bool {
+			return command.Flags().Changed(name) || command.InheritedFlags().Changed(name)
+		}
+		result.Explicit.Runtime = changed("runtime")
+		result.Explicit.Image = changed("image")
+		result.Explicit.APIPort = changed("api-port")
+		result.Explicit.ConsolePort = changed("console-port")
+		result.Explicit.KindNetwork = changed("kind-network")
+		if image != "" {
+			result.Image = image
+		}
+		if apiPort != 0 {
+			result.APIPort = apiPort
+		}
+		if consolePort != 0 {
+			result.ConsolePort = consolePort
+		}
+		if kindNetwork != "" {
+			result.KindNetwork = kindNetwork
+		}
+		return result
+	}
+
+	cmd := &cobra.Command{
+		Use:   "rustfs",
+		Short: "Manage the disposable local RustFS S3 instance",
+	}
+	cmd.PersistentFlags().StringVar(&runtime, "runtime", "", "container runtime to use (docker or podman)")
+	cmd.PersistentFlags().StringVar(&image, "image", "", "pinned RustFS container image")
+	cmd.PersistentFlags().StringVar(&credentialsFile, "credentials-file", "", "JSON credentials file, or - to read credentials from stdin")
+	cmd.PersistentFlags().IntVar(&apiPort, "api-port", 0, "host port for the S3 API (default 9000)")
+	cmd.PersistentFlags().IntVar(&consolePort, "console-port", 0, "host port for the RustFS console (default 9001)")
+	cmd.PersistentFlags().StringVar(&kindNetwork, "kind-network", "kind", "container network used by attach-kind")
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "up",
+		Short: "Start RustFS and wait for S3/health readiness",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			serviceSettings, err := configuredRustFSSettings(cmd, func() rustfs.Settings { return settings(cmd) }, credentialsFile)
+			if err != nil {
+				return err
+			}
+			service, err := rustfs.NewService(localdev.NewExecutor(), *stateDir, serviceSettings)
+			if err != nil {
+				return err
+			}
+			status, err := service.Up(cmd.Context())
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "RustFS is ready at %s\n", status.APIURL)
+			fmt.Fprintf(cmd.OutOrStdout(), "Console: %s\n", status.ConsoleURL)
+			fmt.Fprintf(cmd.OutOrStdout(), "Credentials file: %s\n", status.CredentialsPath)
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Show the current local RustFS state",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			serviceSettings, err := configuredRustFSSettings(cmd, func() rustfs.Settings { return settings(cmd) }, credentialsFile)
+			if err != nil {
+				return err
+			}
+			service, err := rustfs.NewService(localdev.NewExecutor(), *stateDir, serviceSettings)
+			if err != nil {
+				return err
+			}
+			status, err := service.Status(cmd.Context())
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Runtime: %s\n", status.Metadata.Runtime)
+			fmt.Fprintf(cmd.OutOrStdout(), "Image: %s\n", status.Metadata.Image)
+			fmt.Fprintf(cmd.OutOrStdout(), "Running: %t\n", status.Running)
+			fmt.Fprintf(cmd.OutOrStdout(), "Ready: %t (S3 API: %t, health: %t)\n", status.Ready, status.APIReady, status.HealthReady)
+			fmt.Fprintf(cmd.OutOrStdout(), "S3 API: %s\n", status.APIURL)
+			fmt.Fprintf(cmd.OutOrStdout(), "Console: %s\n", status.ConsoleURL)
+			fmt.Fprintf(cmd.OutOrStdout(), "Networks: %s\n", strings.Join(status.AttachedNetworks, ", "))
+			fmt.Fprintf(cmd.OutOrStdout(), "Kind Attached: %t\n", status.KindAttached)
+			if status.KindIP != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Kind IP: %s\n", status.KindIP)
+				fmt.Fprintf(cmd.OutOrStdout(), "Kind network endpoint reachable from host: %t\n", status.KindReachable)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Credentials present: %t (%s)\n", status.CredentialsExists, status.CredentialsPath)
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "destroy",
+		Short: "Stop RustFS and remove its disposable state and data",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			serviceSettings, err := configuredRustFSSettings(cmd, func() rustfs.Settings { return settings(cmd) }, credentialsFile)
+			if err != nil {
+				return err
+			}
+			service, err := rustfs.NewService(localdev.NewExecutor(), *stateDir, serviceSettings)
+			if err != nil {
+				return err
+			}
+			if err := service.Destroy(cmd.Context()); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Local RustFS state removed.")
+			return nil
+		},
+	})
+
+	var cluster string
+	attachCmd := &cobra.Command{
+		Use:   "attach-kind",
+		Short: "Connect RustFS to the Kind network",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			resolver, err := localdev.NewClusterResolver()
+			if err != nil {
+				return err
+			}
+			clusterCtx, err := resolver.Resolve(ctx, cluster)
+			if err != nil {
+				return err
+			}
+			if !strings.EqualFold(clusterCtx.Config.OpenCenter.Infrastructure.Provider, "kind") {
+				return fmt.Errorf("cluster %q is not a kind cluster", cluster)
+			}
+			serviceSettings, err := configuredRustFSSettings(cmd, func() rustfs.Settings { return settings(cmd) }, credentialsFile)
+			if err != nil {
+				return err
+			}
+			service, err := rustfs.NewService(localdev.NewExecutor(), *stateDir, serviceSettings)
+			if err != nil {
+				return err
+			}
+			if clusterCtx.Paths == nil || strings.TrimSpace(clusterCtx.Paths.KubeconfigPath) == "" {
+				return fmt.Errorf("cluster %q has no kubeconfig for the authenticated RustFS reachability probe", cluster)
+			}
+			result, err := service.AttachKindWithKubeconfig(ctx, clusterCtx.Paths.KubeconfigPath)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Kind network attached.")
+			if result.KindIP != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Kind IP: %s\n", result.KindIP)
+				fmt.Fprintf(cmd.OutOrStdout(), "Kind network endpoint reachable from host: %t\n", result.KindReachable)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "S3 API: %s\n", result.APIURL)
+			return nil
+		},
+	}
+	attachCmd.Flags().StringVar(&cluster, "cluster", "", "kind cluster name")
+	_ = attachCmd.MarkFlagRequired("cluster")
+	cmd.AddCommand(attachCmd)
+
+	return cmd
+}
+
+func configuredRustFSSettings(cmd *cobra.Command, defaults func() rustfs.Settings, pathname string) (rustfs.Settings, error) {
+	settings := defaults()
+	if strings.TrimSpace(pathname) == "" {
+		return settings, nil
+	}
+	if pathname == "-" {
+		credentials, err := rustfs.ParseCredentials(cmd.InOrStdin())
+		if err != nil {
+			return rustfs.Settings{}, err
+		}
+		settings.Credentials = credentials
+		return settings, nil
+	}
+	file, err := os.Open(pathname)
+	if err != nil {
+		return rustfs.Settings{}, fmt.Errorf("open RustFS credentials file: %w", err)
+	}
+	defer file.Close()
+	credentials, err := rustfs.ParseCredentials(file)
+	if err != nil {
+		return rustfs.Settings{}, err
+	}
+	settings.Credentials = credentials
+	return settings, nil
 }
 
 func newGiteaCmd(stateDir *string) *cobra.Command {

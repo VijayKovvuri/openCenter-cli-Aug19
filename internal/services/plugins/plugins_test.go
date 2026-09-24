@@ -133,6 +133,21 @@ func TestVeleroPlugin(t *testing.T) {
 		err := plugin.Validate(cfg)
 		assert.NoError(t, err)
 	})
+
+	t.Run("Validate disabled filesystem storage", func(t *testing.T) {
+		cfg := &services.VeleroConfig{StorageType: "none"}
+		assert.NoError(t, plugin.Validate(cfg))
+	})
+
+	t.Run("Reject enabled filesystem storage", func(t *testing.T) {
+		cfg := &services.VeleroConfig{
+			BaseConfig:  services.BaseConfig{Enabled: true},
+			StorageType: "none",
+		}
+		err := plugin.Validate(cfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot be used when Velero is enabled")
+	})
 }
 
 func TestLokiPlugin(t *testing.T) {
@@ -193,6 +208,11 @@ func TestLokiPlugin(t *testing.T) {
 		err := plugin.Validate(cfg)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "must be 's3' or 'swift'")
+	})
+
+	t.Run("Validate filesystem storage", func(t *testing.T) {
+		cfg := &services.LokiConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "none"}
+		assert.NoError(t, plugin.Validate(cfg))
 	})
 }
 

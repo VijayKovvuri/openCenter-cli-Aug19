@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/opencenter-cloud/opencenter-cli/internal/config/services"
 	svc "github.com/opencenter-cloud/opencenter-cli/internal/services"
@@ -51,17 +52,21 @@ func (p *LokiPlugin) validate(config interface{}) error {
 
 	// Basic validation
 	if cfg.IsEnabled() && cfg.StorageType != "" {
-		if cfg.StorageType != "s3" && cfg.StorageType != "swift" {
-			return fmt.Errorf("storage_type must be 's3' or 'swift', got '%s'", cfg.StorageType)
+		storageType := strings.ToLower(strings.TrimSpace(cfg.StorageType))
+		if storageType == "none" {
+			return nil
+		}
+		if storageType != "s3" && storageType != "swift" {
+			return fmt.Errorf("storage_type must be 's3' or 'swift' (or 'none'), got '%s'", cfg.StorageType)
 		}
 
 		// Swift-specific validation
-		if cfg.StorageType == "swift" && cfg.SwiftAuthURL == "" {
+		if storageType == "swift" && cfg.SwiftAuthURL == "" {
 			return fmt.Errorf("swift_auth_url is required when storage_type is 'swift'")
 		}
 
 		// S3-specific validation
-		if cfg.StorageType == "s3" && cfg.S3Endpoint == "" {
+		if storageType == "s3" && cfg.S3Endpoint == "" {
 			return fmt.Errorf("s3_endpoint is required when storage_type is 's3'")
 		}
 	}

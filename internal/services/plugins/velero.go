@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/opencenter-cloud/opencenter-cli/internal/config/services"
 	svc "github.com/opencenter-cloud/opencenter-cli/internal/services"
@@ -47,6 +48,13 @@ func (p *VeleroPlugin) validate(config interface{}) error {
 	cfg, ok := config.(*services.VeleroConfig)
 	if !ok {
 		return fmt.Errorf("invalid config type for velero: expected *VeleroConfig")
+	}
+
+	if strings.EqualFold(strings.TrimSpace(cfg.StorageType), "none") {
+		if cfg.IsEnabled() {
+			return fmt.Errorf("storage_type none cannot be used when Velero is enabled")
+		}
+		return nil
 	}
 
 	// Basic validation

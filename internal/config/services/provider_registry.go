@@ -34,6 +34,7 @@ const (
 	StorageProviderSwift ServiceProviderType = "swift"
 	StorageProviderGCS   ServiceProviderType = "gcs"
 	StorageProviderAzure ServiceProviderType = "azure"
+	StorageProviderNone  ServiceProviderType = "none"
 )
 
 // InfrastructureProvider represents the infrastructure provider type

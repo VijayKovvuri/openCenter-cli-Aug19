@@ -44,6 +44,7 @@ func (h *objectStorageCapabilityHandler) Prompts(cfg *v2.Config, providerCtx orc
 				Default:  h.defaultStorageProvider("loki", providerCtx),
 				Required: true,
 				Options: []orchestration.PromptOption{
+					{Value: "none", Label: "Filesystem (no object storage)"},
 					{Value: "swift", Label: "Swift"},
 					{Value: "s3", Label: "S3"},
 				},
