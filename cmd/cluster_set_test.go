@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/opencenter-cloud/opencenter-cli/internal/config/services"
 	v2 "github.com/opencenter-cloud/opencenter-cli/internal/config/v2"
 	"github.com/opencenter-cloud/opencenter-cli/internal/core/paths"
 	testhelpers "github.com/opencenter-cloud/opencenter-cli/internal/testing"
@@ -112,6 +113,49 @@ func TestClusterSetUpdatesKindDisableDefaultCNIByPath(t *testing.T) {
 	}
 	if !updated.OpenCenter.Infrastructure.Kind.DisableDefaultCNI {
 		t.Fatal("expected disable_default_cni to be true after cluster set")
+	}
+}
+
+func TestClusterSetRejectsNestedServiceFieldByPath(t *testing.T) {
+	dir := t.TempDir()
+	prepareCommandTestEnv(t, dir)
+
+	cfg, _ := saveKindConfigForCommandTest(t, dir, "set-service-enabled", "opencenter")
+	if cfg.OpenCenter.Services == nil {
+		cfg.OpenCenter.Services = make(v2.ServiceMap)
+	}
+	cfg.OpenCenter.Services["test-service"] = &services.DefaultServiceConfig{
+		BaseConfig: services.BaseConfig{Enabled: false},
+	}
+	resolver := paths.NewPathResolver(filepath.Join(dir, "clusters"))
+	testhelpers.SaveConfigWithPathResolver(t, cfg, resolver)
+
+	cmd := newClusterSetCmd()
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"set-service-enabled", "opencenter.services.test-service.enabled=true"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected cluster set to reject nested service field")
+	}
+	if !strings.Contains(err.Error(), "setting nested fields in maps is not supported") {
+		t.Fatalf("expected nested map field rejection, got: %v\nstderr: %s", err, stderr.String())
+	}
+
+	resetCommandStateForTests()
+
+	updated, err := loadCanonicalConfig("set-service-enabled")
+	if err != nil {
+		t.Fatalf("load canonical config: %v", err)
+	}
+	service, ok := updated.OpenCenter.Services["test-service"].(*services.DefaultServiceConfig)
+	if !ok {
+		t.Fatalf("test-service config type = %T, want *services.DefaultServiceConfig", updated.OpenCenter.Services["test-service"])
+	}
+	if service.Enabled {
+		t.Fatal("expected test-service to remain disabled after rejected cluster set")
 	}
 }
 
