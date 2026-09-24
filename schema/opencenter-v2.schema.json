@@ -2442,6 +2442,21 @@
                 "master_volume_type": {
                   "type": "string"
                 },
+                "profile": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "lifecycle": {
+                      "type": "string"
+                    },
+                    "object_storage_provider": {
+                      "type": "string"
+                    },
+                    "pvc_provider": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
                 "worker_volume_delete_on_termination": {
                   "type": "boolean"
                 },

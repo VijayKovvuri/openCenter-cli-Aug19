@@ -72,8 +72,14 @@ func UsesManagedObjectStorage(cfg *Config) bool {
 }
 
 // ResolveObjectStorageBackend deliberately ignores infrastructure provider.
-// Platform bulk data always uses an S3-compatible API, supplied externally or by RustFS.
-func ResolveObjectStorageBackend(cfg *Config, _ string) string {
+// Platform bulk data uses an S3-compatible API, supplied externally or by
+// RustFS, unless a service explicitly opts out of object storage.
+func ResolveObjectStorageBackend(cfg *Config, serviceName string) string {
+	if serviceName == "loki" {
+		if loki, ok := configuredService(cfg, serviceName).(*services.LokiConfig); ok && strings.EqualFold(strings.TrimSpace(loki.StorageType), "none") {
+			return "none"
+		}
+	}
 	return "s3"
 }
 
@@ -118,6 +124,9 @@ func storagePolicyIssues(cfg *Config) []storagePolicyIssue {
 			if !isServiceEnabled(cfg, serviceName) {
 				continue
 			}
+			if serviceName == "loki" && ResolveObjectStorageBackend(cfg, serviceName) == "none" {
+				continue
+			}
 			if err := ValidateS3Endpoint(externalS3Endpoint(cfg, serviceName)); err != nil {
 				add("opencenter.services."+serviceName+".s3_endpoint", "external S3-compatible storage requires a configured absolute HTTP(S) endpoint.")
 			}
@@ -132,6 +141,9 @@ func storagePolicyIssues(cfg *Config) []storagePolicyIssue {
 			continue
 		}
 		storageType := configuredBulkStorageType(cfg, serviceName)
+		if serviceName == "loki" && storageType == "none" {
+			continue
+		}
 		if storageType == "" || storageType == "s3" {
 			continue
 		}

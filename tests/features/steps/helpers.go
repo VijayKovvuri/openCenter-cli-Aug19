@@ -273,7 +273,45 @@ func (w *world) runOpenCenter(args []string) error {
 	}
 	w.lastOut = stdout.String()
 	w.lastErr = stderr.String()
+	if err == nil {
+		w.seedInitializedBDDConfig(args)
+	}
 	return nil
+}
+
+func (w *world) seedInitializedBDDConfig(args []string) {
+	if len(args) < 3 || args[0] != "cluster" || args[1] != "init" {
+		return
+	}
+
+	clusterName := ""
+	for index := 2; index < len(args); index++ {
+		if strings.HasPrefix(args[index], "-") {
+			continue
+		}
+		clusterName = args[index]
+		break
+	}
+	if clusterName == "" {
+		return
+	}
+
+	originalConfigDir := os.Getenv("OPENCENTER_CONFIG_DIR")
+	if err := os.Setenv("OPENCENTER_CONFIG_DIR", w.configDir); err != nil {
+		return
+	}
+	defer os.Setenv("OPENCENTER_CONFIG_DIR", originalConfigDir)
+
+	mgr, err := config.NewConfigurationManager()
+	if err != nil {
+		return
+	}
+	cfg, err := mgr.LoadWithoutValidation(context.Background(), clusterName)
+	if err != nil {
+		return
+	}
+	applyBDDStorageContractDefaults(cfg)
+	_ = mgr.SaveWithoutValidation(context.Background(), cfg)
 }
 
 // pathFromFeature converts a path potentially starting with
@@ -521,6 +559,7 @@ func normalizeConfigYAML(raw string) string {
 	if err != nil {
 		return raw
 	}
+	applyBDDStorageContractDefaults(baseCfg)
 
 	defaultData, err := baseCfg.ToJSON()
 	if err != nil {
@@ -542,6 +581,43 @@ func normalizeConfigYAML(raw string) string {
 		return raw
 	}
 	return string(out)
+}
+
+// applyBDDStorageContractDefaults supplies the values that older, intentionally
+// minimal feature fixtures omitted before generation readiness enforced the
+// portable S3 contract. These are test-only seed values; explicit fixture
+// values still win during the merge below.
+func applyBDDStorageContractDefaults(cfg *v2.Config) {
+	if cfg == nil {
+		return
+	}
+
+	if openstack := cfg.OpenCenter.Infrastructure.Cloud.OpenStack; openstack != nil {
+		openstack.ApplicationCredentialID = "bdd-application-credential-id"
+		openstack.ApplicationCredentialSecret = "bdd-application-credential-secret"
+	}
+	cfg.OpenCenter.GitOps.Auth.Token = &v2.GitOpsTokenAuth{
+		Provider: "github",
+		Token:    "bdd-git-token",
+	}
+	cfg.Secrets.Keycloak.AdminPassword = "bdd-keycloak-admin-password"
+	cfg.Secrets.Headlamp.OIDCClientSecret = "bdd-headlamp-oidc-secret"
+	if openstackCSI, ok := cfg.OpenCenter.Services["openstack-csi"].(*services.DefaultServiceConfig); ok {
+		openstackCSI.Enabled = false
+	}
+
+	if loki, ok := cfg.OpenCenter.Services["loki"].(*services.LokiConfig); ok {
+		loki.S3Endpoint = "https://s3.example.test"
+		loki.S3Region = "us-east-1"
+		cfg.Secrets.Loki.S3AccessKeyID = "bdd-loki-access-key"
+		cfg.Secrets.Loki.S3SecretAccessKey = "bdd-loki-secret-key"
+	}
+	if tempo, ok := cfg.OpenCenter.Services["tempo"].(*services.TempoConfig); ok {
+		tempo.S3Endpoint = "https://s3.example.test"
+		tempo.S3Region = "us-east-1"
+		cfg.Secrets.Tempo.AccessKey = "bdd-tempo-access-key"
+		cfg.Secrets.Tempo.SecretKey = "bdd-tempo-secret-key"
+	}
 }
 
 func normalizeGitOpsAliasesInMap(data map[string]any) {

@@ -141,8 +141,8 @@ Feature: Configuration-driven template rendering
   # loki
   # ---------------------------------------------------------------------------
 
-  @template @loki @swift
-  Scenario: Render Loki with custom Swift credentials
+  @template @loki @s3
+  Scenario: Render Loki with custom S3 credentials
     Given a file "<<tmp>>/conf/test-cluster.yaml" with content:
       """
       opencenter:
@@ -153,15 +153,16 @@ Feature: Configuration-driven template rendering
         services:
           loki:
             enabled: true
-            loki_bucket_name: "my-loki-bucket"
-            loki_volume_size: 50
-            loki_storage_class: "fast-ssd"
-            swift_auth_url: "https://keystone.example.com/v3/"
-            swift_region: "US-EAST-1"
-            swift_domain_name: "default"
+            bucket_name: "my-loki-bucket"
+            volume_size: 50
+            storage_class: "fast-ssd"
+            storage_type: s3
+            s3_endpoint: "https://s3.example.com"
+            s3_region: "us-east-1"
       secrets:
         loki:
-          swift_password: "my-secure-password"
+          s3_access_key_id: "AKIALOKITEST"
+          s3_secret_access_key: "loki-s3-secret"
       """
     When I run "opencenter cluster use test-cluster --config-dir <<tmp>>/conf"
     Then the exit code should be 0
@@ -448,12 +449,12 @@ Feature: Configuration-driven template rendering
             letsencrypt_server: https://acme-staging-v02.api.letsencrypt.org/directory
           loki:
             enabled: true
-            loki_bucket_name: test-integration-loki
-            loki_volume_size: 50
-            loki_storage_class: csi-cinder-sc-delete
-            swift_auth_url: https://keystone.api.test.example.com/v3/
-            swift_region: US-EAST-1
-            swift_domain_name: default
+            bucket_name: test-integration-loki
+            volume_size: 50
+            storage_class: csi-cinder-sc-delete
+            storage_type: s3
+            s3_endpoint: https://s3.example.com
+            s3_region: us-east-1
           velero:
             enabled: true
             velero_backup_bucket: test-integration-backups
@@ -486,7 +487,8 @@ Feature: Configuration-driven template rendering
           aws_access_key: AKIATEST123456789ABC
           aws_secret_access_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYTESTKEY123
         loki:
-          swift_password: test-swift-password-secure-123
+          s3_access_key_id: AKIAINTEGRATIONLOKI
+          s3_secret_access_key: test-loki-s3-secret
         keycloak:
           client_secret: f8V0we25ajxjm9OMpFz9BsYObGTYKM4Y
           admin_password: SecureKeycloakAdminPassword123!

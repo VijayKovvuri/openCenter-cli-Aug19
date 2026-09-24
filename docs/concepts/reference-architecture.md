@@ -751,14 +751,13 @@ Rotation uses a dual-key strategy: the new key encrypts new secrets while the ol
 
 ### Configuration
 
-The cluster-config SOPS block lives at `opencenter.secrets.sops`, not at a top-level `secrets:` key, and does not take an `age_keys` list — it references a single key file:
+The cluster-config SOPS block lives at `secrets.sops` and does not take an `age_keys` list — it references a single key file:
 
 ```yaml
-opencenter:
-  secrets:
-    sops:
-      enabled: true
-      age_key_file: "/path/to/age-key.txt"
+secrets:
+  sops:
+    enabled: true
+    age_key_file: "/path/to/age-key.txt"
 ```
 
 ### Key Management Commands

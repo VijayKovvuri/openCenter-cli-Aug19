@@ -246,7 +246,7 @@ Feature: Configuration validation rules
     And stdout should contain "Validation successful"
 
   @validation @service-secrets @priority4
-  Scenario: Loki with required Swift credentials passes validation
+  Scenario: Loki with required S3 credentials passes validation
     Given a file "<<tmp>>/loki-test.yaml" with content:
       """
       schema_version: "2.0"
@@ -334,9 +334,9 @@ Feature: Configuration validation rules
         services:
           loki:
             enabled: true
-            swift_auth_url: https://keystone.example.com/v3/
-            swift_region: REGION
-            swift_domain_name: default
+            storage_type: s3
+            s3_endpoint: https://s3.example.com
+            s3_region: us-east-1
       deployment:
         method: kubespray
         kubespray:
@@ -352,7 +352,8 @@ Feature: Configuration validation rules
         global:
           openstack_auth_url: https://identity.example.test/v3/
         loki:
-          swift_application_credential_secret: test-swift-secret
+          s3_access_key_id: test-loki-access-key
+          s3_secret_access_key: test-loki-secret-key
       """
     When I run "opencenter cluster validate --config-file <<tmp>>/loki-test.yaml"
     Then the exit code should be 0

@@ -31,6 +31,10 @@ import (
 func TestProperty_SecurityAndPrivacyProtection(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
 	parameters.MinSuccessfulTests = 100
+	// Keep generated strings and maps within the constraints used by the
+	// security property generators so they do not discard most cases.
+	parameters.MinSize = 1
+	parameters.MaxSize = 6
 	properties := gopter.NewProperties(parameters)
 
 	// Property 12.1: Sensitive data masking consistency
