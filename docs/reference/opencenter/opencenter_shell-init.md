@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-shell-init
 title: "Opencenter_Shell Init"
 sidebar_label: Opencenter_Shell Init

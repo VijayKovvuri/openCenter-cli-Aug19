@@ -608,6 +608,20 @@ schema-verify = [
 # Generate CLI documentation
 docs-gen = "go run cmd/docs/generate.go"
 
+# Update timestamps only for explicitly supplied changed Markdown pages.
+# Usage: mise run docs-update-timestamps -- docs/page.md docs/other-page.md
+docs-update-timestamps = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -eq 0 ]; then
+  echo "Usage: mise run docs-update-timestamps -- docs/page.md [docs/other-page.md ...]" >&2
+  exit 2
+fi
+
+python3 hack/scripts/audit_doc_frontmatter.py --update-last-updated "$@"
+'''
+
 # Verify that two consecutive documentation generations are byte-for-byte stable.
 test-docs-idempotency = '''
 #!/usr/bin/env bash

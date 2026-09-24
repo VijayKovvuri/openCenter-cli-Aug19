@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: cli-llm-code-map
 title: "Navigate the openCenter CLI Code Map"
 sidebar_label: LLM Code Map

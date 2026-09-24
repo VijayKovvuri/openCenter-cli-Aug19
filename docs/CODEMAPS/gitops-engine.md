@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: gitops-engine-map
 title: "Explain the GitOps Generation Engine"
 sidebar_label: GitOps Engine

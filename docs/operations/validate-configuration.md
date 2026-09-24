@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: validate-configuration
 title: "Validate Configuration"
 sidebar_label: Validate Configuration

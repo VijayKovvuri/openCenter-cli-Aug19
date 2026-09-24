@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-opentelemetry-kube-stack
 title: "OpenTelemetry Kube Stack"
 sidebar_label: OpenTelemetry

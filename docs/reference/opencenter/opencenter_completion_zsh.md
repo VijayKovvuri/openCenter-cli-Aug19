@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-completion-zsh
 title: "Opencenter_Completion_Zsh"
 sidebar_label: Opencenter_Completion_Zsh

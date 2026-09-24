@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-init
 title: "Opencenter_Cluster_Init"
 sidebar_label: Opencenter_Cluster_Init

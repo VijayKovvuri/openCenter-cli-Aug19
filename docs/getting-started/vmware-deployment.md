@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: vmware-deployment
 title: "Deploy Kubernetes on VMware vSphere"
 sidebar_label: Deploy Kubernetes on

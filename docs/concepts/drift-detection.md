@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: drift-detection
 title: "Infrastructure Drift Detection"
 sidebar_label: Infrastructure Drift Detection

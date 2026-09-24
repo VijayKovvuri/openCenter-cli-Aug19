@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: "opencenter-settings-explain"
 title: "Opencenter_Settings_Explain"
 sidebar_label: "Opencenter_Settings_Explain"

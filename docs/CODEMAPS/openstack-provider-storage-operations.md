@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: openstack-provider-storage-operations
 title: "Explain OpenStack Provider and Storage Operations"
 sidebar_label: OpenStack Provider and Storage

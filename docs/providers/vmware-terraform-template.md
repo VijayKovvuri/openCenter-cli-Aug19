@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: vmware-terraform-template
 title: "VMware Terraform Template"
 sidebar_label: VMware Terraform Template

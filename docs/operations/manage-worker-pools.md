@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: manage-worker-pools
 title: "Manage Worker Pools"
 sidebar_label: Manage Worker Pools

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: adding-services
 title: "Adding New Platform Services"
 sidebar_label: Adding New Platform Services

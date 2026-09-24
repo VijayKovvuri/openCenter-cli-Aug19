@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: configuration-schema
 title: "Configuration Schema Reference"
 sidebar_label: Configuration Schema

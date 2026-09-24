@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-kube-prometheus-stack
 title: "kube-prometheus-stack"
 sidebar_label: Prometheus Stack

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: validation-rules
 title: "Validation Rules"
 sidebar_label: Validation Rules

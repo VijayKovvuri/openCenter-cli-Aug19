@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-metallb
 title: "MetalLB"
 sidebar_label: MetalLB

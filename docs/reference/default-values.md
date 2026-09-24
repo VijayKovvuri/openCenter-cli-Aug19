@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: default-values
 title: "Default Values"
 sidebar_label: Default Values

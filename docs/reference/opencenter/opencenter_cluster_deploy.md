@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-deploy
 title: "Opencenter_Cluster_Deploy"
 sidebar_label: Opencenter_Cluster_Deploy

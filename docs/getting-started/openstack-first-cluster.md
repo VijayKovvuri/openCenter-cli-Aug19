@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: openstack-first-cluster
 title: "Deploy Your First Production Cluster on OpenStack"
 sidebar_label: Deploy Your First

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: development-setup
 title: "Development Environment Setup"
 sidebar_label: Development Environment Setup

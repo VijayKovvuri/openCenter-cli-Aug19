@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: flux-bootstrap-methods
 title: "Configure Flux Bootstrap Authentication"
 sidebar_label: Configure Flux Bootstrap

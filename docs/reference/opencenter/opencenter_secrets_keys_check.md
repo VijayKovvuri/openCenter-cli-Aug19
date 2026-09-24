@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-secrets-keys-check
 title: "Opencenter_Secrets_Keys_Check"
 sidebar_label: Opencenter_Secrets_Keys_Check

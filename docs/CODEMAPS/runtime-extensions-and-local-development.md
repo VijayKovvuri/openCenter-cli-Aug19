@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: runtime-extensions-and-local-development
 title: "Explain Runtime Extensions and Local Development"
 sidebar_label: Runtime Extensions

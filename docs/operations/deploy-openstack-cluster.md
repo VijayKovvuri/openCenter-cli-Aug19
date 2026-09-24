@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: deploy-cluster
 title: "Deploy a New Cluster"
 sidebar_label: Deploy a New Cluster

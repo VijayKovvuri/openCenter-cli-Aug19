@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-external-snapshotter
 title: "External Snapshotter"
 sidebar_label: External Snapshotter

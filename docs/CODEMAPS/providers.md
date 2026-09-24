@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: providers-map
 title: "Explain Provider Capability Boundaries"
 sidebar_label: Providers

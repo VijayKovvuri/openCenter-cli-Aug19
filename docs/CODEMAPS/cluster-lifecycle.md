@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: cluster-lifecycle-map
 title: "Explain the Cluster Lifecycle"
 sidebar_label: Cluster Lifecycle

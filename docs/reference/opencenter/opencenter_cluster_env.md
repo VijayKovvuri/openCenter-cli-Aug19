@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-env
 title: "Opencenter_Cluster_Env"
 sidebar_label: Opencenter_Cluster_Env

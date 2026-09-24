@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/opencenter-cloud/opencenter-cli/cmd"
 	"github.com/spf13/cobra"
@@ -27,6 +28,10 @@ import (
 )
 
 const defaultDocsAudience = "operators, developers"
+
+func currentGenerationDate() string {
+	return time.Now().UTC().Format("2006-01-02")
+}
 
 func main() {
 	if err := GenerateDocs("docs/reference/opencenter", cmd.NewBuiltinRootCmd()); err != nil {
@@ -86,14 +91,15 @@ func GenerateDocs(outputDir string, root *cobra.Command) error {
 
 func commandMetadata(root *cobra.Command) map[string]string {
 	metadata := make(map[string]string)
+	generationDate := currentGenerationDate()
 	walkVisibleCommands(root, func(command *cobra.Command) {
 		filename := commandFilename(command)
 		id := strings.ToLower(strings.TrimSuffix(filename, filepath.Ext(filename)))
 		id = strings.ReplaceAll(id, "_", "-")
 		displayName := commandDisplayName(command.CommandPath())
 		metadata[filename] = fmt.Sprintf(
-			"---\nid: %s\ntitle: %s\nsidebar_label: %s\ndescription: %s\ndoc_type: reference\naudience: %s\ntags: [cli, reference]\n---\n",
-			yamlQuote(id), yamlQuote(displayName), yamlQuote(displayName), yamlQuote(command.Short), yamlQuote(defaultDocsAudience),
+			"---\nid: %s\ntitle: %s\nsidebar_label: %s\ndescription: %s\ndoc_type: reference\naudience: %s\ntags: [cli, reference]\nlast_updated: %s\n---\n",
+			yamlQuote(id), yamlQuote(displayName), yamlQuote(displayName), yamlQuote(command.Short), yamlQuote(defaultDocsAudience), yamlQuote(generationDate),
 		)
 	})
 	return metadata

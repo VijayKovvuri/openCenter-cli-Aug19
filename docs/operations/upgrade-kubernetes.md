@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: upgrade-kubernetes
 title: "Upgrade Kubernetes"
 sidebar_label: Upgrade Kubernetes

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-kafka-cluster
 title: "Kafka Cluster"
 sidebar_label: Kafka Cluster

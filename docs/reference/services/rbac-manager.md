@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-rbac-manager
 title: "RBAC Manager"
 sidebar_label: RBAC Manager

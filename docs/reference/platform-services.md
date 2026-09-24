@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: platform-services
 title: "Platform Services Architecture"
 sidebar_label: Platform Services Architecture

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: configuration-lifecycle
 title: "Configuration Lifecycle"
 sidebar_label: Configuration Lifecycle

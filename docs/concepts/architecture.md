@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: architecture
 title: "Architecture"
 sidebar_label: Architecture

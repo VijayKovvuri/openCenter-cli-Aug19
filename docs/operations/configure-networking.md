@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: configure-networking
 title: "Configure Networking"
 sidebar_label: Configure Networking

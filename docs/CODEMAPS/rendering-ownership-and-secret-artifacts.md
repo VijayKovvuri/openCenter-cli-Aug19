@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: rendering-ownership-and-secret-artifacts
 title: "Explain Rendering Ownership and Secret Artifacts"
 sidebar_label: Rendering Ownership

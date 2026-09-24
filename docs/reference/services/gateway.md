@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-gateway
 title: "Gateway"
 sidebar_label: Gateway

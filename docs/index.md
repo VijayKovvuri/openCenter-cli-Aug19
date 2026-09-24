@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: index
 title: "openCenter CLI Documentation"
 sidebar_label: openCenter CLI Documentation

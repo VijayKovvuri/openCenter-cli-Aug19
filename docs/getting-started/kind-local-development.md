@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: kind-local-development
 title: "Set Up Local Development with Kind"
 sidebar_label: Set Up Local

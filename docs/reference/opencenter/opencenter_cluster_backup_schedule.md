@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-backup-schedule
 title: "Opencenter_Cluster_Backup_Schedule"
 sidebar_label: Opencenter_Cluster_Backup_Schedule

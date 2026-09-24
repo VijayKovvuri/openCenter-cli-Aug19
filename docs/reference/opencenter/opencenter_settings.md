@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: "opencenter-settings"
 title: "Opencenter_Settings"
 sidebar_label: "Opencenter_Settings"

@@ -20,23 +20,45 @@ jobs:
       - name: Collect changed markdown files
         id: changed
         shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          base_ref="${{ github.base_ref }}"
+          base_ref="$BASE_REF"
           git fetch origin "$base_ref" --depth=1
-          files=$(git diff --name-only "origin/$base_ref"...HEAD | grep -E '\.md$' || true)
-          echo "files<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$files" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          changed_file_list="$RUNNER_TEMP/docs-p0-changed-files"
+          git diff --name-only -z --diff-filter=ACMR \
+            "origin/$base_ref"...HEAD -- '*.md' > "$changed_file_list"
+          mapfile -d '' changed_files < "$changed_file_list"
+
+          if ((${#changed_files[@]} == 0)); then
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "has_files=true" >> "$GITHUB_OUTPUT"
+          delimiter="docs_p0_files_${GITHUB_RUN_ID:-local}_${RANDOM}"
+          {
+            echo "files<<$delimiter"
+            printf '%s\n' "${changed_files[@]}"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run P0 doc checks
-        if: steps.changed.outputs.files != ''
+        if: steps.changed.outputs.has_files == 'true'
         shell: bash
         run: |
-          ./scripts/docs/p0-docs-check.sh ${{ steps.changed.outputs.files }}
+          set -euo pipefail
+          changed_file_list="$RUNNER_TEMP/docs-p0-changed-files"
+          mapfile -d '' changed_files < "$changed_file_list"
+          audit_args=(--strict)
+          for changed_file in "${changed_files[@]}"; do
+            audit_args+=("--files=$changed_file")
+          done
+          python3 hack/scripts/audit_doc_frontmatter.py "${audit_args[@]}"
 
       - name: Vale
-        if: steps.changed.outputs.files != ''
+        if: steps.changed.outputs.has_files == 'true'
         uses: vale-cli/vale-action@v2
         with:
           files: ${{ steps.changed.outputs.files }}

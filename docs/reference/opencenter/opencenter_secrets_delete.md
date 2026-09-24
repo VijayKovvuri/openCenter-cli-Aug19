@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-secrets-delete
 title: "Opencenter_Secrets_Delete"
 sidebar_label: Opencenter_Secrets_Delete

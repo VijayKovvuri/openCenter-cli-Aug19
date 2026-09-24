@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter
 title: "Opencenter"
 sidebar_label: Opencenter

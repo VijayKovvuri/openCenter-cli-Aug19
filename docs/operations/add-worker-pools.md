@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: add-worker-pools
 title: "Add Worker Pools"
 sidebar_label: Add Worker Pools

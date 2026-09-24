@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-import-report
 title: "Opencenter_Cluster_Import_Report"
 sidebar_label: Opencenter_Cluster_Import_Report

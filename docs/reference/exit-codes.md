@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: exit-codes
 title: "Exit Codes"
 sidebar_label: Exit Codes

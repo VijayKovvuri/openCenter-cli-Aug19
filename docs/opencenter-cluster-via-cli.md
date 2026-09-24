@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: openstack-cluster-via-cli
 title: "Create and Deploy an OpenStack Cluster with the CLI"
 sidebar_label: OpenStack Cluster via CLI

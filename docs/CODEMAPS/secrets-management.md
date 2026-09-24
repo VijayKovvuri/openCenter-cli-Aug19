@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: secrets-management-map
 title: "Explain Secrets Management Boundaries"
 sidebar_label: Secrets Management

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: multi-cluster-setup
 title: "Manage Multiple Clusters with Organizations"
 sidebar_label: Manage Multiple Clusters

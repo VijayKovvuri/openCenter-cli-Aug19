@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: "opencenter-settings-explain-cluster-defaults"
 title: "Opencenter_Settings_Explain_Cluster Defaults"
 sidebar_label: "Opencenter_Settings_Explain_Cluster Defaults"

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-weave-gitops
 title: "Weave GitOps"
 sidebar_label: Weave GitOps

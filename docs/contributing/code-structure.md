@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: code-structure
 title: "Codebase Organization"
 sidebar_label: Codebase Organization

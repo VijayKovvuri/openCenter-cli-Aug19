@@ -1,3 +1,13 @@
+---
+id: localdev-rustfs
+title: "Local RustFS development service"
+sidebar_label: Local RustFS
+description: Reference for the local RustFS development service and its credential and Kind attachment workflow.
+doc_type: reference
+audience: "contributors, maintainers"
+tags: [local-development, rustfs, reference]
+last_updated: 2026-09-24
+---
 # Local RustFS development service
 
 `opencenter-local rustfs up` starts the pinned RustFS image with its S3 API on

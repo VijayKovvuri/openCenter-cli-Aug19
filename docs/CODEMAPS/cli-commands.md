@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: cli-commands-map
 title: "Map the Built-in CLI Commands"
 sidebar_label: CLI Commands

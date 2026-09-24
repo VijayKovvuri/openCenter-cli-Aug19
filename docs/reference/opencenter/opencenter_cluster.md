@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster
 title: "Opencenter_Cluster"
 sidebar_label: Opencenter_Cluster

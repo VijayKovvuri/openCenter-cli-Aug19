@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: adding-providers
 title: "Adding New Infrastructure Providers"
 sidebar_label: Adding New Infrastructure

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: "opencenter-cluster-provider"
 title: "Opencenter_Cluster_Provider"
 sidebar_label: "Opencenter_Cluster_Provider"

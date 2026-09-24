@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: create-kind-cluster
 title: "Create a Local Kind Cluster"
 sidebar_label: Create a Local Kind Cluster

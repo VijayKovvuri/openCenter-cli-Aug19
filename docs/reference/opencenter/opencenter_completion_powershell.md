@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-completion-powershell
 title: "Opencenter_Completion_Powershell"
 sidebar_label: Opencenter_Completion_Powershell

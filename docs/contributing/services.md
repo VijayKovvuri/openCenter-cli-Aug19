@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-lifecycle
 title: "Service Enable/Disable Lifecycle"
 sidebar_label: Service Enable/Disable Lifecycle

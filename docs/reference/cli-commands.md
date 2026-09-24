@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: cli-commands
 title: "CLI Commands Reference"
 sidebar_label: CLI Commands Reference

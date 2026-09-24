@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: "opencenter-secrets-keys-reconcile"
 title: "Opencenter_Secrets_Keys_Reconcile"
 sidebar_label: "Opencenter_Secrets_Keys_Reconcile"

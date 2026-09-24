@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: mise-tasks
 title: "Mise Tasks Reference"
 sidebar_label: Mise Tasks

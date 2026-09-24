@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: normalize-legacy-renderer-metadata
 title: "Normalize Legacy v2 Renderer Metadata"
 sidebar_label: Normalize Legacy Renderer Metadata

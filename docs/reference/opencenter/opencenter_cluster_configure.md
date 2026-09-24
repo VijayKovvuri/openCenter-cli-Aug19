@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-configure
 title: "Opencenter_Cluster_Configure"
 sidebar_label: Opencenter_Cluster_Configure

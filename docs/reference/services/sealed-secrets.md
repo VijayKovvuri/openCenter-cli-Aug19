@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-sealed-secrets
 title: "Sealed Secrets"
 sidebar_label: Sealed Secrets

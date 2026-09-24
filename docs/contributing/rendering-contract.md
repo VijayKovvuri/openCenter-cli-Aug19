@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: rendering-contract
 title: "Renderer Contract"
 sidebar_label: Renderer Contract

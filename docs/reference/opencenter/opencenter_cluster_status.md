@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-status
 title: "Opencenter_Cluster_Status"
 sidebar_label: Opencenter_Cluster_Status

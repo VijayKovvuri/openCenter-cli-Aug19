@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: getting-started
 title: "Getting Started with openCenter"
 sidebar_label: Getting Started with openCenter

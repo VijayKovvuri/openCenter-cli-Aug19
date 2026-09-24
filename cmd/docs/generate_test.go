@@ -17,11 +17,12 @@ import (
 )
 
 func TestGenerateDocsPreservesExistingFrontmatterAndDefaultsNewPages(t *testing.T) {
+	expectedGenerationDate := currentGenerationDate()
 	outputDir := filepath.Join(t.TempDir(), "reference")
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	preserved := "---\nid: custom-root\ntitle: \"Custom root\"\nsidebar_label: Custom\ndescription: \"Keep this description: exactly\"\ndoc_type: reference\naudience: \"platform engineers\"\ntags: [reference, custom]\n---\n"
+	preserved := "---\nid: custom-root\ntitle: \"Custom root\"\nsidebar_label: Custom\ndescription: \"Keep this description: exactly\"\ndoc_type: reference\naudience: \"platform engineers\"\ntags: [reference, custom]\nlast_updated: \"2025-01-02\"\n---\n"
 	if err := os.WriteFile(filepath.Join(outputDir, "opencenter.md"), []byte(preserved+"old body\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestGenerateDocsPreservesExistingFrontmatterAndDefaultsNewPages(t *testing.
 	if err := yaml.Unmarshal([]byte(strings.TrimSuffix(strings.TrimPrefix(frontmatter, "---\n"), "---\n")), &fields); err != nil {
 		t.Fatalf("new page frontmatter is invalid YAML: %v\n%s", err, frontmatter)
 	}
-	for _, key := range []string{"id", "title", "sidebar_label", "description", "doc_type", "audience", "tags"} {
+	for _, key := range []string{"id", "title", "sidebar_label", "description", "doc_type", "audience", "tags", "last_updated"} {
 		if _, ok := fields[key]; !ok {
 			t.Fatalf("new page frontmatter is missing %q: %s", key, frontmatter)
 		}
@@ -62,6 +63,9 @@ func TestGenerateDocsPreservesExistingFrontmatterAndDefaultsNewPages(t *testing.
 	}
 	if fields["audience"] != defaultDocsAudience {
 		t.Fatalf("new page audience = %v, want %q", fields["audience"], defaultDocsAudience)
+	}
+	if fields["last_updated"] != expectedGenerationDate {
+		t.Fatalf("new page last_updated = %v, want %s", fields["last_updated"], expectedGenerationDate)
 	}
 }
 
@@ -156,6 +160,7 @@ func mapKeys[T any](values map[string]T) []string {
 }
 
 func TestGeneratedFrontmatterAudit(t *testing.T) {
+	expectedGenerationDate := currentGenerationDate()
 	outputDir := filepath.Join(t.TempDir(), "reference")
 	if err := GenerateDocs(outputDir, cmd.NewBuiltinRootCmd()); err != nil {
 		t.Fatal(err)
@@ -173,7 +178,7 @@ func TestGeneratedFrontmatterAudit(t *testing.T) {
 			t.Errorf("%s: invalid YAML frontmatter: %v", filename, err)
 			continue
 		}
-		for _, key := range []string{"id", "title", "sidebar_label", "description", "doc_type", "audience", "tags"} {
+		for _, key := range []string{"id", "title", "sidebar_label", "description", "doc_type", "audience", "tags", "last_updated"} {
 			if _, ok := fields[key]; !ok {
 				t.Errorf("%s: missing frontmatter key %q", filename, key)
 			}
@@ -184,6 +189,10 @@ func TestGeneratedFrontmatterAudit(t *testing.T) {
 		}
 		if fields["doc_type"] != "reference" {
 			t.Errorf("%s: doc_type = %v, want reference", filename, fields["doc_type"])
+		}
+		lastUpdated, _ := fields["last_updated"].(string)
+		if lastUpdated != expectedGenerationDate {
+			t.Errorf("%s: last_updated = %q, want %s", filename, lastUpdated, expectedGenerationDate)
 		}
 		if tags, ok := fields["tags"].([]interface{}); !ok || len(tags) == 0 {
 			t.Errorf("%s: tags must be a non-empty YAML sequence", filename)

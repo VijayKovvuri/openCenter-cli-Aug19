@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-alert-proxy
 title: "Alert Proxy"
 sidebar_label: Alert Proxy

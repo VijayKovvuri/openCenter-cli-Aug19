@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: config-system-map
 title: "Explain the Configuration System"
 sidebar_label: Config System

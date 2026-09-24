@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-drift-detect
 title: "Opencenter_Cluster_Drift_Detect"
 sidebar_label: Opencenter_Cluster_Drift_Detect

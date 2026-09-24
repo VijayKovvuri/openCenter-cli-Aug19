@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-fluxcd
 title: "FluxCD"
 sidebar_label: FluxCD

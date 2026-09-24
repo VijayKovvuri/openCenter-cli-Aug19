@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-postgres-operator
 title: "PostgreSQL Operator"
 sidebar_label: Postgres Operator

@@ -1,3 +1,13 @@
+---
+id: docs-readme
+title: "Documentation"
+sidebar_label: Documentation
+description: Repository documentation map and maintenance rules.
+doc_type: reference
+audience: "contributors, maintainers"
+tags: [documentation, maintenance]
+last_updated: 2026-09-24
+---
 # Documentation
 
 This folder is the source for the openCenter CLI documentation. Pages are
@@ -197,7 +207,16 @@ A few pages live at the `docs/` root rather than in a lifecycle directory
 ## Editing Rules
 
 - Every page must start with YAML frontmatter: `id`, `title`,
-  `sidebar_label`, `description`, `doc_type`, `audience`, `tags`.
+  `sidebar_label`, `description`, `doc_type`, `audience`, `tags`, and
+  `last_updated`.
+- `last_updated` is an ISO date (`YYYY-MM-DD`) for the most recent
+  **substantive** change to the page's meaning, instructions, or technical
+  facts. Do not advance it for formatting, spelling, or link-only edits.
+- When making a substantive documentation change, update `last_updated` in
+  the same change, review the page against current source/configuration, and
+  run the frontmatter audit before submitting. For generated CLI references,
+  regenerate the pages when the command tree changes, then verify that the
+  generated frontmatter still includes `last_updated`.
 - Pick exactly one `doc_type` per file. Split mixed content and cross-link.
 - Start the body with a `**Purpose:**` line naming the audience and scope.
 - Place pages in the lifecycle directory matching the reader's task.

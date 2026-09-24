@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-completion-bash
 title: "Opencenter_Completion_Bash"
 sidebar_label: Opencenter_Completion_Bash

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: vmware-provider-guide
 title: "VMware Provider Guide"
 sidebar_label: VMware Provider Guide

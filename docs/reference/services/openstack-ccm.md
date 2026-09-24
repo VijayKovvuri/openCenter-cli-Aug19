@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-openstack-ccm
 title: "OpenStack Cloud Controller Manager"
 sidebar_label: OpenStack CCM

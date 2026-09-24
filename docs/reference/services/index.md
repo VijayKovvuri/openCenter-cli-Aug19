@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: services-index
 title: "Platform Services"
 sidebar_label: Services
@@ -99,7 +100,7 @@ opencenter cluster service options <service>
 
 ## Storage backend defaults
 
-`loki`, `tempo`, and `velero` accept a `storage_type`. `internal/config/services/provider_registry.go` maps the cluster's infrastructure provider to a default backend when one is not set explicitly:
+`loki`, `tempo`, and `velero` accept a `storage_type`. `etcd-backup` also accepts `s3` (the default) or explicit `none` to opt out of its upload workload. `internal/config/services/provider_registry.go` maps the cluster's infrastructure provider to a default backend when one is not set explicitly:
 
 | Infrastructure provider | Default `storage_type` |
 |--------------------------|-------------------------|

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: cluster-init-details
 title: "Cluster Init Details"
 sidebar_label: Cluster Init Details

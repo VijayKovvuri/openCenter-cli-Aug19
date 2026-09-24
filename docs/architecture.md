@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: cli-architecture
 title: "Understand the openCenter CLI Architecture"
 sidebar_label: Architecture

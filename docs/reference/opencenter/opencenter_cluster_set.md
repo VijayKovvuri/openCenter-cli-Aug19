@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-set
 title: "Opencenter_Cluster_Set"
 sidebar_label: Opencenter_Cluster_Set

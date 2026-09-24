@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: descriptor-condition-schema
 title: "Descriptor Condition Schema"
 sidebar_label: Descriptor Condition Schema
@@ -16,8 +17,8 @@ tags: [descriptors, conditions, rendering, schema]
 ```yaml
 when:
   field: <dotted.field.path>
-  operator: <equals|exists|true|false>
-  value: <string>  # required only for "equals"
+  operator: <equals|not_equals|exists|true|false>
+  value: <string>  # required only for "equals" and "not_equals"
 ```
 
 A condition evaluates a single field from the typed `config.Config` against a simple predicate. Conditions appear on:
@@ -31,6 +32,7 @@ A condition evaluates a single field from the typed `config.Config` against a si
 | Operator | Semantics | `value` field | Behavior when field is absent |
 | --- | --- | --- | --- |
 | `equals` | `fmt.Sprint(fieldValue) == value` | required, non-empty | returns `false` |
+| `not_equals` | `fmt.Sprint(fieldValue) != value` | required, non-empty | returns `true` |
 | `exists` | field is present and non-nil in config | must be empty | returns `false` |
 | `true` | field is a boolean and is `true` | must be empty | returns `false` |
 | `false` | field is a boolean and is `false` | must be empty | returns `false` |
@@ -72,9 +74,9 @@ Invalid conditions cause a load error. The renderer refuses to start with invali
 | Unsupported operator | Load error: descriptor rejected |
 | Invalid field path syntax | Load error: descriptor rejected |
 | Unknown field path (not in config struct) | Load error: descriptor rejected |
-| `equals` with empty value | Load error: descriptor rejected |
+| `equals`/`not_equals` with empty value | Load error: descriptor rejected |
 | `exists`/`true`/`false` with non-empty value | Load error: descriptor rejected |
-| Field absent at render time | Condition evaluates to `false` (not an error) |
+| Field absent at render time | `equals` evaluates to `false`; `not_equals` evaluates to `true` |
 | Field present but wrong type for `true`/`false` | Condition evaluates to `false` |
 
 All error cases are fail-closed: invalid conditions prevent rendering, they never silently skip.
@@ -93,13 +95,13 @@ The bar for extension is intentionally high. The condition model is meant to sta
 
 ## Real-world variance coverage
 
-An inventory of actual per-service, per-cluster file differences (originally taken across five real overlay trees in a since-removed customer fixture -- see [Renderer Contract](rendering-contract.md) section 7) found that every observed variance was expressible with the four operators above, with no new operator needed:
+An inventory of actual per-service, per-cluster file differences (originally taken across five real overlay trees in a since-removed customer fixture -- see [Renderer Contract](rendering-contract.md) section 7) found that every observed variance was expressible with the five operators above, with no new operator needed:
 
 * boolean service enablement and feature flags -- `true` / `false` (e.g. `harbor`, `etcd-backup`, `sealed-secrets`, `longhorn`, `kyverno` presence; `opencenter.gitops.overlay_units.customer_managed.enabled`; `opencenter.gitops.overlay_units.sops.enabled`)
 * optional credential presence -- `exists` (e.g. an AWS-credentials file that should only render when `secrets.global.aws.application.access_key` is set)
-* string-valued configuration choices -- `equals` (e.g. selecting a reclaim-policy-specific StorageClass file)
+* string-valued configuration choices -- `equals` / `not_equals` (e.g. selecting a reclaim-policy-specific StorageClass file or omitting the etcd-backup S3 workload for `storage_type: none`)
 
-Treat this as evidence for the operator set's sufficiency, not as a guarantee -- if a genuinely new per-service condition doesn't fit these four operators, follow the extension review process above rather than working around the limitation with template hacks.
+Treat this as evidence for the operator set's sufficiency, not as a guarantee -- if a genuinely new per-service condition doesn't fit these five operators, follow the extension review process above rather than working around the limitation with template hacks.
 
 ## Implementation References
 

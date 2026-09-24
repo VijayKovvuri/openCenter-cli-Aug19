@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-headlamp
 title: "Headlamp Dashboard"
 sidebar_label: Headlamp

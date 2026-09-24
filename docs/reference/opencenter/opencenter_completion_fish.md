@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-completion-fish
 title: "Opencenter_Completion_Fish"
 sidebar_label: Opencenter_Completion_Fish

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-backup-restore
 title: "Opencenter_Cluster_Backup_Restore"
 sidebar_label: Opencenter_Cluster_Backup_Restore

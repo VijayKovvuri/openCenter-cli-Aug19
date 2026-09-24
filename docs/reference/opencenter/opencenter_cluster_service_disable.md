@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-service-disable
 title: "Opencenter_Cluster_Service_Disable"
 sidebar_label: Opencenter_Cluster_Service_Disable

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: github-actions-workflows
 title: "GitHub Actions Workflows"
 sidebar_label: GitHub Actions Workflows
@@ -68,8 +69,8 @@ Step names confirmed real: `kind-create`, `kind-export-kubeconfig`, `gitea-attac
 
 * Trigger: `pull_request`, `paths: ["**/*.md"]`.
 * Job `docs-p0`, self-hosted.
-* Steps: checkout (`fetch-depth: 0`) -> collect changed `.md` files against `origin/<base_ref>` -> "Run P0 doc checks" (`./scripts/docs/p0-docs-check.sh <files>`) -> "Vale" (`vale-cli/vale-action@v2`, `fail_on_error: true`).
-* **Known discrepancy**: `scripts/docs/p0-docs-check.sh` does not exist in this repository (only `scripts/shell-integration-test.sh` exists under `scripts/`). A `.vale.ini` does exist at the repository root. This workflow currently references a checked-in-missing script -- do not assume this check is meaningfully enforcing anything until that script exists.
+* Steps: checkout (`fetch-depth: 0`) -> collect changed Markdown files against `origin/<base_ref>` with NUL-delimited `git diff --name-only -z --diff-filter=ACMR` (so deletions are omitted) -> run `hack/scripts/audit_doc_frontmatter.py --strict --files <changed paths>` with each path passed as a quoted argument -> "Vale" (`vale-cli/vale-action@v2`, `fail_on_error: true`).
+* The frontmatter check targets only changed Markdown files; repository READMEs and other default-excluded Markdown paths are skipped by the audit because they are not maintained documentation pages.
 
 ## `release.yml` -- "Release"
 

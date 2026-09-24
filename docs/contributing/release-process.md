@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: release-process
 title: "Release Process"
 sidebar_label: Release Process

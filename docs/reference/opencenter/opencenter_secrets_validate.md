@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-secrets-validate
 title: "Opencenter_Secrets_Validate"
 sidebar_label: Opencenter_Secrets_Validate

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: integrate-ci-cd
 title: "Integrate CI/CD"
 sidebar_label: Integrate CI/CD

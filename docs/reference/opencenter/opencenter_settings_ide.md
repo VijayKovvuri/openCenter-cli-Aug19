@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: "opencenter-settings-ide"
 title: "Opencenter_Settings_Ide"
 sidebar_label: "Opencenter_Settings_Ide"

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: di-container-map
 title: "Explain the Application Dependency Graph"
 sidebar_label: DI Container

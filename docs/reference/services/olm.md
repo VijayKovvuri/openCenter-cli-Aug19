@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-olm
 title: "Operator Lifecycle Manager"
 sidebar_label: OLM

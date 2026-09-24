@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: "opencenter-cluster-pool-add"
 title: "Opencenter_Cluster_Pool_Add"
 sidebar_label: "Opencenter_Cluster_Pool_Add"

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-backup-create
 title: "Opencenter_Cluster_Backup_Create"
 sidebar_label: Opencenter_Cluster_Backup_Create

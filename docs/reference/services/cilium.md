@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-cilium
 title: "Cilium"
 sidebar_label: Cilium

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: build-system
 title: "Build System (Mise)"
 sidebar_label: Build System (Mise)

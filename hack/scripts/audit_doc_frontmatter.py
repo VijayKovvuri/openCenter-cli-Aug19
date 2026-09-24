@@ -6,26 +6,35 @@ Documentation steering rule:
 
     1. Frontmatter is the very first block in the file.
     2. The required keys are present:
-       ``id``, ``title``, ``sidebar_label``, ``description``,
-       ``doc_type``, ``audience``, ``tags``.
+        ``id``, ``title``, ``sidebar_label``, ``description``,
+        ``doc_type``, ``audience``, ``tags``, ``last_updated``.
     3. ``doc_type`` is one of ``tutorial``, ``how-to``, ``reference``,
        or ``explanation``.
     4. ``id`` is a URL-safe slug (lowercase, digits, hyphens only).
     5. ``tags`` has at least one entry.
+    6. ``last_updated`` is an ISO-8601 calendar date (``YYYY-MM-DD``).
 
-The script does not modify files.  It exits non-zero if any page fails,
-making it suitable for use as a pre-merge check.
+Audit mode does not modify files.  Update mode modifies only the explicitly
+supplied paths and exits non-zero on invalid or missing targets.  Audit mode
+exits non-zero if any page fails, making it suitable for pre-merge checks.
 
 Usage::
 
     python3 hack/scripts/audit_doc_frontmatter.py [--repo-root .]
                                                   [--strict]
                                                   [--ignore PATTERN]...
+                                                  [--files PATH ...]
+
+    # Update only explicitly supplied maintained pages.  Outside-docs and
+    # default-excluded paths are rejected.
+    python3 hack/scripts/audit_doc_frontmatter.py \
+        --update-last-updated docs/page.md docs/other-page.md
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime as _datetime
 import re
 import sys
 from dataclasses import dataclass
@@ -43,6 +52,7 @@ REQUIRED_KEYS = (
     "doc_type",
     "audience",
     "tags",
+    "last_updated",
 )
 
 ALLOWED_DOC_TYPES = {"tutorial", "how-to", "reference", "explanation"}
@@ -58,6 +68,7 @@ DEFAULT_IGNORES = (
 
 # Slug must match the steering rule: lowercase + digits + hyphens.
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +198,27 @@ def audit_file(path: Path) -> list[Issue]:
     if "description" in fm and not unquote(fm["description"]):
         issues.append(Issue(path, "description is empty"))
 
+    last_updated = unquote(fm.get("last_updated", ""))
+    if "last_updated" in fm and not is_iso_date(last_updated):
+        issues.append(
+            Issue(
+                path,
+                "last_updated must be an ISO-8601 date in YYYY-MM-DD format",
+            )
+        )
+
     return issues
+
+
+def is_iso_date(value: str) -> bool:
+    """Return whether *value* is a real ISO-8601 calendar date."""
+    if not _DATE_RE.fullmatch(value):
+        return False
+    try:
+        _datetime.date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +257,128 @@ def _glob_match(rel_str: str, pattern: str) -> bool:
     return re.fullmatch(regex, rel_str) is not None
 
 
+def supplied_markdown(
+    repo_root: Path,
+    paths: list[str],
+    ignores: list[str],
+    *,
+    reject_excluded: bool = False,
+) -> tuple[list[Path], list[Issue]]:
+    """Resolve explicitly supplied maintained Markdown paths.
+
+    Audit targets outside ``docs/`` or in an ignored path are skipped because
+    they are not maintained documentation pages.  Update targets pass
+    ``reject_excluded=True`` and receive an error instead; this prevents an
+    explicit update from silently succeeding without changing any file.
+    """
+    repo_root = repo_root.resolve()
+    files: list[Path] = []
+    issues: list[Issue] = []
+    docs_root = (repo_root / "docs").resolve()
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = repo_root / path
+        path = path.resolve()
+        try:
+            path.relative_to(docs_root)
+        except ValueError:
+            if reject_excluded:
+                issues.append(Issue(path, "path is outside the maintained docs directory"))
+            continue
+        if path.suffix.lower() != ".md":
+            issues.append(Issue(path, "path is not a Markdown file"))
+            continue
+        if _is_ignored(path, repo_root, ignores):
+            if reject_excluded:
+                issues.append(Issue(path, "path is excluded from maintained docs"))
+            continue
+        if not path.is_file():
+            issues.append(Issue(path, "file does not exist"))
+            continue
+        files.append(path)
+    return sorted(set(files)), issues
+
+
+def update_last_updated(path: Path, value: str) -> None:
+    """Set ``last_updated`` in one explicitly selected Markdown page."""
+    if not is_iso_date(value):
+        raise ValueError("last_updated must be an ISO-8601 date in YYYY-MM-DD format")
+    text = path.read_text(encoding="utf-8")
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        raise ValueError("missing or invalid YAML frontmatter")
+
+    block = match.group(1)
+    lines = block.splitlines(keepends=True)
+    replaced = False
+    updated_lines: list[str] = []
+    for line in lines:
+        line_without_ending = line.rstrip("\r\n")
+        kv = _KEY_VALUE_RE.match(line_without_ending)
+        if kv and kv.group(1) == "last_updated":
+            prefix = line_without_ending[: line_without_ending.find(":") + 1]
+            raw_value = kv.group(2).strip()
+            spacing_match = re.match(r"^([^:]*:)(\s*)", line_without_ending)
+            spacing = spacing_match.group(2) if spacing_match else " "
+            quote = raw_value[0] if len(raw_value) >= 2 and raw_value[0] == raw_value[-1] and raw_value[0] in ("\"", "'") else "\""
+            ending = line[len(line_without_ending) :]
+            updated_lines.append(f"{prefix}{spacing}{quote}{value}{quote}{ending}")
+            replaced = True
+        else:
+            updated_lines.append(line)
+
+    if replaced:
+        new_block = "".join(updated_lines)
+    else:
+        new_block = block
+        if new_block and not new_block.endswith(("\n", "\r")):
+            new_block += "\n"
+        new_block += f'last_updated: "{value}"'
+
+    start, end = match.span(1)
+    updated = text[:start] + new_block + text[end:]
+    path.write_text(updated, encoding="utf-8")
+
+
+def update_supplied_paths(
+    repo_root: Path, paths: list[str], ignores: list[str], value: str
+) -> int:
+    """Update only supplied paths, after validating the complete target set."""
+    files, issues = supplied_markdown(
+        repo_root, paths, ignores, reject_excluded=True
+    )
+    for issue in issues:
+        print(issue.render(repo_root))
+    if issues:
+        return 1
+    if not files:
+        print("No valid Markdown update targets supplied.")
+        return 1
+
+    pending: list[tuple[Path, str]] = []
+    for path in files:
+        try:
+            text = path.read_text(encoding="utf-8")
+            match = _FRONTMATTER_RE.match(text)
+            if not match:
+                raise ValueError("missing or invalid YAML frontmatter")
+            pending.append((path, text))
+        except (OSError, ValueError) as exc:
+            print(Issue(path, str(exc)).render(repo_root))
+    if len(pending) != len(files):
+        return 1
+
+    for path, _ in pending:
+        try:
+            update_last_updated(path, value)
+        except OSError as exc:
+            print(Issue(path, f"could not update file: {exc}").render(repo_root))
+            return 1
+    print(f"Updated last_updated in {len(files)} files to {value}.")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -251,17 +404,52 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Treat warnings as errors (no warnings exist today)",
     )
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        action="append",
+        metavar="PATH",
+        help="Audit only these maintained Markdown paths (may be repeated)",
+    )
+    parser.add_argument(
+        "--update-last-updated",
+        action="store_true",
+        help="Update timestamps in the explicitly supplied trailing Markdown paths",
+    )
+    parser.add_argument(
+        "--date",
+        help="Date for --update-last-updated (default: current UTC date)",
+    )
+    parser.add_argument("paths", nargs="*", metavar="PATH")
     args = parser.parse_args(argv)
 
     repo_root = args.repo_root.resolve()
     ignores = list(DEFAULT_IGNORES) + args.ignore
-    files = collect_markdown(repo_root, ignores)
+    if args.update_last_updated:
+        if not args.paths:
+            parser.error("--update-last-updated requires at least one Markdown path")
+        value = args.date or _datetime.datetime.now(_datetime.timezone.utc).date().isoformat()
+        if not is_iso_date(value):
+            parser.error("--date must be an ISO-8601 date in YYYY-MM-DD format")
+        return update_supplied_paths(repo_root, args.paths, ignores, value)
 
-    if not files:
+    if args.paths:
+        parser.error("paths require --update-last-updated")
+
+    explicit_issues: list[Issue] = []
+    if args.files is not None:
+        selected_paths = [path for group in args.files for path in group]
+        files, explicit_issues = supplied_markdown(
+            repo_root, selected_paths, ignores
+        )
+    else:
+        files = collect_markdown(repo_root, ignores)
+
+    if not files and not explicit_issues:
         print(f"No Markdown files found under {repo_root}/docs")
         return 0
 
-    all_issues: list[Issue] = []
+    all_issues: list[Issue] = list(explicit_issues)
     for path in files:
         all_issues.extend(audit_file(path))
 

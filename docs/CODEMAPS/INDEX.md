@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: codemaps-index
 title: "openCenter CLI Architecture Maps"
 sidebar_label: Architecture Maps

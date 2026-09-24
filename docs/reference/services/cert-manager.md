@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-cert-manager
 title: "cert-manager"
 sidebar_label: cert-manager

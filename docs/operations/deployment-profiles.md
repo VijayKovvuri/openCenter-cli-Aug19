@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: deployment-profiles
 title: "Deployment Profiles"
 sidebar_label: Deployment Profiles

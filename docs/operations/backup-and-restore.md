@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: backup-and-restore
 title: "Backup and Restore"
 sidebar_label: Backup and Restore

@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: provider-comparison
 title: "Provider Comparison"
 sidebar_label: Provider Comparison

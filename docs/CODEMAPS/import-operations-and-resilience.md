@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: import-operations-and-resilience
 title: "Explain Import Operations and Resilience"
 sidebar_label: Import and Resilience

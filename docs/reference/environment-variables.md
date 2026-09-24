@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: environment-variables
 title: "Environment Variables"
 sidebar_label: Environment Variables

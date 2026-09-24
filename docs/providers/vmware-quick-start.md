@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: vmware-quick-start
 title: "VMware Provider Quick Start"
 sidebar_label: VMware Provider Quick Start

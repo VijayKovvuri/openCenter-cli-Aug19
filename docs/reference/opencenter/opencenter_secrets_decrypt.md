@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-secrets-decrypt
 title: "Opencenter_Secrets_Decrypt"
 sidebar_label: Opencenter_Secrets_Decrypt

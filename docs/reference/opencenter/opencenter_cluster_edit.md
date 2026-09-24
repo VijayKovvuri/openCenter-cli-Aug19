@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-cluster-edit
 title: "Opencenter_Cluster_Edit"
 sidebar_label: Opencenter_Cluster_Edit

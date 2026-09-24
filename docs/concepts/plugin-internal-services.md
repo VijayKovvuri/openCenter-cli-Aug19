@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: plugin-internal-services
 title: "Plugin Internal Services"
 sidebar_label: Plugin Internal Services

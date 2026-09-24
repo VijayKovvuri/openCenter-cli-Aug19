@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: "opencenter-secrets-keys-set-primary"
 title: "Opencenter_Secrets_Keys_Set Primary"
 sidebar_label: "Opencenter_Secrets_Keys_Set Primary"

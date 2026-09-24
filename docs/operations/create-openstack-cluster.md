@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: create-openstack-cluster
 title: "Create an OpenStack Cluster"
 sidebar_label: Create an OpenStack Cluster

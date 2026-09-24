@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: manage-secrets
 title: "Manage Secrets"
 sidebar_label: Manage Secrets

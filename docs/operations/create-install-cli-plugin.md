@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: create-install-cli-plugin
 title: "Create and Install a CLI Plugin"
 sidebar_label: Create and Install a CLI Plugin

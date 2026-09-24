@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-openstack-csi
 title: "OpenStack Cinder CSI"
 sidebar_label: OpenStack CSI

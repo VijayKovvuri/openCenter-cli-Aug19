@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: "opencenter-cluster-pool-remove"
 title: "Opencenter_Cluster_Pool_Remove"
 sidebar_label: "Opencenter_Cluster_Pool_Remove"

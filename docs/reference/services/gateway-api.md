@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: service-gateway-api
 title: "Gateway API"
 sidebar_label: Gateway API

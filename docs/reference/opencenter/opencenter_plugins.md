@@ -1,4 +1,5 @@
 ---
+last_updated: 2026-09-24
 id: opencenter-plugins
 title: "Opencenter_Plugins"
 sidebar_label: Opencenter_Plugins
