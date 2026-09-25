@@ -30,6 +30,12 @@ flowchart TD
 
 Dependencies should follow the arrows. Lower-level packages must not import `cmd`, and domain packages must not depend on executable wiring.
 
+## Contributor navigation
+
+Start at the executable entrypoint that owns the behavior: `main.go` for process setup, `cmd/root.go` for the production Cobra graph, `cmd/opencenter-local/main.go` for local development, `cmd/docs/generate.go` for generated command pages, or `hack/generate_relaypoint_fixture_configs.go` for fixture configuration. From a command constructor, follow the service call into `internal`; do not infer ownership from filenames alone.
+
+For a package-level deep dive, use the [CODEMAPS index](CODEMAPS/INDEX.md). When changing serialized configuration, generated output, plugins, embedded assets, or reflected wiring, search the corresponding string- and runtime-based references before removing or renaming code. These surfaces are compatibility boundaries even when static call-graph analysis cannot see them.
+
 ## Major commands and services
 
 The primary executable is rooted at `main.go`. Its Cobra tree is assembled in `cmd/root.go` and exposes these main command groups:

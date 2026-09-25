@@ -17,7 +17,7 @@ openCenter is a command-line tool that turns a single declarative YAML file into
 ## Quick start
 
 * [Getting Started](getting-started/getting-started.md) -- create your first cluster in 10 minutes.
-* [Create and Deploy an OpenStack Cluster with the CLI](opencenter-cluster-via-cli.md) -- a full walkthrough including provider discovery and per-service storage.
+* [OpenStack First Cluster](getting-started/openstack-first-cluster.md) -- a full walkthrough including provider discovery and per-service storage.
 * [CLI Commands Reference](reference/cli-commands.md) -- complete command tree.
 * [Configuration Schema](reference/configuration-schema.md) -- file structure and field reference.
 * [Glossary](glossary.md) -- terminology used throughout these docs.
@@ -31,7 +31,7 @@ Tutorial-style walkthroughs for first-time setup.
 * [Kind Local Development](getting-started/kind-local-development.md) -- local development cluster.
 * [VMware Deployment](getting-started/vmware-deployment.md) -- deploy on pre-provisioned vSphere VMs.
 * [Multi-Cluster Management](getting-started/multi-cluster-setup.md) -- manage several clusters.
-* [Create and Deploy an OpenStack Cluster with the CLI](opencenter-cluster-via-cli.md) -- deeper OpenStack walkthrough.
+* [OpenStack First Cluster](getting-started/openstack-first-cluster.md) -- deeper OpenStack walkthrough.
 
 ## Operations
 
@@ -51,8 +51,6 @@ Task-oriented how-to guides for day-2 work.
 Provider-specific guides.
 
 * [VMware Provider Guide](providers/vmware.md)
-* [VMware Quick Start](providers/vmware-quick-start.md)
-* [VMware Terraform Template](providers/vmware-terraform-template.md)
 
 See also [Providers](reference/providers.md) in the reference section for the full provider comparison and support matrix.
 
@@ -82,7 +80,7 @@ Background and rationale -- the "why" behind the design.
 * [Plugin External CLI](concepts/plugin-external-cli.md)
 * [Provider Comparison](concepts/provider-comparison.md)
 
-For the code-level (contributor-facing) architecture map, rather than the concept-level explanation above, see [Understand the openCenter CLI Architecture](architecture.md) and [Navigate the openCenter CLI Code Map](llm-code-map.md). The repository-only `docs/CODEMAPS/` maps are internal development material and are not part of the published documentation navigation; code-oriented readers can use the repository's `llms.txt` guide.
+For the code-level (contributor-facing) architecture map, rather than the concept-level explanation above, see [Understand the openCenter CLI Architecture](architecture.md) and the repository-only [CODEMAPS index](CODEMAPS/INDEX.md). These maps are internal development material and are not part of the published documentation navigation; code-oriented readers can also use the repository's `llms.txt` guide.
 
 ## Contributing
 
@@ -94,7 +92,7 @@ Developer documentation for contributors and maintainers.
 * [Codebase Organization](contributing/code-structure.md)
 * [Adding a Built-in Service](contributing/adding-a-built-in-service.md)
 * [Understand the openCenter CLI Architecture](architecture.md) -- terse, contributor-facing package/entry-point map (complements [Codebase Organization](contributing/code-structure.md) and the concept-level [Architecture](concepts/architecture.md) above).
-* [Navigate the openCenter CLI Code Map](llm-code-map.md) -- entry points, package responsibilities, and safe-change boundaries.
+* [Navigate the openCenter CLI Code Map](CODEMAPS/INDEX.md) -- entry points, package responsibilities, and safe-change boundaries.
 * [Testing Guide](contributing/testing-guide.md)
 * [Adding New Infrastructure Providers](contributing/adding-providers.md)
 * [Adding New Platform Services](contributing/adding-services.md)
@@ -116,23 +114,16 @@ contributors and code-oriented agents. These maps are not published reader-facin
 docs and are intentionally omitted from the navigation above. Use the repository
 `llms.txt` guide or `docs/README.md` map when you need them.
 
-## Release notes (current source and historical snapshots)
+## Release notes (GitHub Releases)
 
-Current published notes are maintained by GitHub Releases. The release workflow
-`.github/workflows/release.yml` is the source of truth and runs
-`gh release create --generate-notes` for pushed `v*` tags. The checked-in pages
-below are manually maintained historical snapshots, not generated output; the
-local `mise run release`/`mise run publish` helpers only write preflight notes to
+Current and historical release notes are maintained on GitHub Releases. The
+release workflow `.github/workflows/release.yml` is the source of truth and
+runs `gh release create --generate-notes` for pushed `v*` tags. The local
+`mise run release`/`mise run publish` helpers only write preflight notes to
 `bin/release/`.
 
 * [GitHub Releases](https://github.com/opencenter-cloud/openCenter-cli/releases) -- current published release notes.
 
-* [1.0.0-rc01](release/1.0.0-rc01.md)
-* [1.0.0-rc02](release/1.0.0-rc02.md)
-* [1.0.0-rc03](release/1.0.0-rc03.md)
-* [1.0.0-rc04](release/1.0.0-rc04.md)
-* [1.0.0-rc05](release/1.0.0-rc05.md)
-* [1.0.0-rc06](release/1.0.0-rc06.md)
 
 ## Documentation framework
 

@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: providers-map
 title: "Explain Provider Capability Boundaries"
 sidebar_label: Providers
@@ -17,7 +17,7 @@ Provider support is split across three boundaries: configuration and generation 
 | Provider | Config/generate | Bootstrap/deploy | Drift provider | Provider/storage operations | Current boundary |
 |---|---:|---:|---:|---:|---|
 | OpenStack | Yes | Yes | Yes | Yes | `internal/cluster/provider/openstack`, `internal/cluster/storage/openstack`, `internal/cloud/openstack`, shared infrastructure bootstrap, OpenTofu |
-| Magnum | Yes | Yes | No | No | `internal/cloud/magnum` (standalone Magnum API client) plus `internal/cluster/magnum_bootstrap_provider.go`, `magnum_destroy_provider.go`, `magnum_configure_orchestrator.go`; configuration at `opencenter.infrastructure.cloud.magnum`; no OpenTofu or drift implementation |
+| Magnum | Yes | Yes | No | No | `internal/cloud/magnum` (standalone Magnum API client) plus `internal/cluster/magnum_bootstrap_provider.go`, `magnum_destroy_provider.go`, `magnum_configure_orchestrator.go`; supported through `cluster init --type magnum`; configuration at `opencenter.infrastructure.cloud.magnum`; no OpenTofu or drift implementation |
 | VMware/vSphere | Yes | Yes | Yes | No | `internal/cloud/vmware`, shared infrastructure bootstrap with vSphere credentials |
 | Baremetal | Yes | Yes | No cloud drift implementation | No | Shared infrastructure bootstrap with static-node validation; no OpenStack/vSphere credentials |
 | Kind | Yes | Yes | No | No | `internal/cloud/kind` lifecycle plus `kindBootstrapProvider`; local development integration |
@@ -25,7 +25,7 @@ Provider support is split across three boundaries: configuration and generation 
 | GCP | Yes (schema and validator accept it; same latent bootstrap path as AWS) | Blocked at the CLI layer | Not registered as a supported drift provider (no `internal/cloud/gcp` package) | No | Planned/unavailable to end users |
 | Azure | Yes (schema and validator accept it; same latent bootstrap path as AWS) | Blocked at the CLI layer | Not registered as a supported drift provider (no `internal/cloud/azure` package) | No | Planned/unavailable to end users |
 
-`internal/config/v2/readiness.go` lists `openstack, aws, gcp, azure, baremetal, vsphere, vmware, kind, magnum` as schema-valid provider strings, and `internal/config/v2/provider.go` has a real validator for each of `openstack`/`aws`/`gcp`/`azure`. `internal/cluster/bootstrap_service.go` even contains a `case "aws", "gcp", "azure":` branch that builds real `make terraform` / `terraform apply` bootstrap steps. None of this is reachable through the CLI: `cmd/provider_availability.go:checkProviderAvailability` is called from `cluster init`, `cluster generate`, and `cluster deploy` and unconditionally rejects `aws`, `gcp`, and `azure` with "provider ... is planned for a future release and not yet available. Supported providers: openstack, vmware, kind, baremetal" (that message omits Magnum, which is reachable only by explicitly setting `opencenter.infrastructure.provider: magnum`, not offered as a `cluster init --type` choice in that error text). Treat the internal aws/gcp/azure code paths as unused scaffolding, not a supported capability.
+`internal/config/v2/readiness.go` lists `openstack, aws, gcp, azure, baremetal, vsphere, vmware, kind, magnum` as schema-valid provider strings, and `internal/config/v2/provider.go` has a real validator for each of `openstack`/`aws`/`gcp`/`azure`. `internal/cluster/bootstrap_service.go` even contains a `case "aws", "gcp", "azure":` branch that builds real `make terraform` / `terraform apply` bootstrap steps. None of this is reachable through the CLI: `cmd/provider_availability.go:checkProviderAvailability` is called from `cluster init`, `cluster generate`, and `cluster deploy` and unconditionally rejects `aws`, `gcp`, and `azure` with "provider ... is planned for a future release and not yet available. Supported providers: openstack, vmware, kind, baremetal". That availability-error text has an incomplete Supported providers list: it omits Magnum, which is supported through `cluster init --type magnum`; this is an error-message omission, not a Magnum availability limitation. Treat the internal aws/gcp/azure code paths as unused scaffolding, not a supported capability.
 
 ## Drift interface
 

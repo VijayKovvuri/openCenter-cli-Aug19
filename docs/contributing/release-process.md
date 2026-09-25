@@ -22,7 +22,7 @@ tags: [contributing, release]
 
 ## Versioning
 
-Releases are tagged `v<version>` (e.g. `v1.2.0`) and pushed to trigger the workflow. There is no `CHANGELOG.md` to update -- release notes are generated automatically by the workflow (`--generate-notes` from `gh release create`) from the commit range since the previous tag. Historical release notes are also kept as static pages under `docs/release/` (currently `1.0.0-rc01.md` through `1.0.0-rc06.md`); add a new page there if the project wants a durable copy of the notes outside GitHub's release page.
+Releases are tagged `v<version>` (e.g. `v1.2.0`) and pushed to trigger the workflow. There is no `CHANGELOG.md` to update -- release notes are generated automatically by the workflow (`--generate-notes` from `gh release create`) from the commit range since the previous tag and published on [GitHub Releases](https://github.com/opencenter-cloud/openCenter-cli/releases).
 
 ## Step 1: Run the local preflight build (optional)
 

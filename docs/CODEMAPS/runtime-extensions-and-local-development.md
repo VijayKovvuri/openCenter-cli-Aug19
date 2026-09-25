@@ -1,16 +1,16 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: runtime-extensions-and-local-development
 title: "Explain Runtime Extensions and Local Development"
 sidebar_label: Runtime Extensions
-description: Explains production external-plugin discovery, the separate opencenter-local executable, reusable template services, and security controls around extension processes.
+description: Explains production external-plugin discovery, the separate opencenter-local executable, reusable template services, disposable RustFS S3-compatible storage, and security controls around extension processes.
 doc_type: explanation
 audience: "contributors, maintainers, plugin authors"
-tags: [plugins, local-development, gitea, flux, templates]
+tags: [plugins, local-development, gitea, flux, rustfs, templates]
 ---
 # Runtime extensions and local development
 
-Runtime extensibility and local development are separate from the built-in production command graph. External plugins extend the production executable at runtime; `opencenter-local` is a second executable that orchestrates disposable local infrastructure.
+Runtime extensibility and local development are separate from the built-in production command graph. External plugins extend the production executable at runtime; `opencenter-local` is a second executable that orchestrates disposable local Kind, Gitea, Flux, and RustFS infrastructure.
 
 ## External plugin flow
 
@@ -36,10 +36,13 @@ Plugins with verified checksums run normally; unverified plugins warn; checksum 
 | Command | Implementation | Role |
 |---|---|---|
 | `gitea up`, `status`, `destroy`, `attach-kind` | `internal/localdev/gitea` | Manage disposable local Gitea, credentials, repository, and Kind network attachment |
+| `rustfs up`, `status`, `destroy`, `attach-kind` | `internal/localdev/rustfs` | Manage disposable local S3-compatible storage and its Kind network attachment |
 | `gitops push` | `internal/localdev/gitops` | Operate on the local GitOps repository for a resolved cluster |
 | `flux bootstrap` | `internal/localdev/flux` | Bootstrap Flux from local Gitea |
 
 `internal/localdev.ClusterResolver` loads a validated cluster config through the shared configuration manager and resolves organization-aware paths. `localdev.Executor` is the command execution boundary used by local services.
+
+The `rustfs` commands provide disposable local S3-compatible storage: `up` starts RustFS and waits for S3 and health readiness, `status` reports state without exposing credentials, and `destroy` removes the container, object data, and local state. `attach-kind --cluster` connects the service to the Kind network and verifies authenticated S3 reachability from a temporary workload; `up` does not attach to Kind automatically.
 
 ## Template boundary
 

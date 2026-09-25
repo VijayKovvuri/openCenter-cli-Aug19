@@ -37,6 +37,7 @@ Before starting, ensure you have:
 * OpenStack cloud account (public or private)
 * API credentials (username, password, project name)
 * OpenStack CLI installed (`openstack` command)
+* A selected `clouds.yaml` profile for provider discovery (`--os-cloud`)
 * Network quota (1 network, 1 subnet, 1 router)
 * Compute quota (6 instances minimum, 24 vCPUs, 96 GB RAM)
 * Storage quota (240 GB volumes)
@@ -47,6 +48,7 @@ Before starting, ensure you have:
 * Git installed
 * SSH client
 * Text editor
+* `kubectl`, and `flux` for post-deployment checks
 
 **Verify OpenStack Access:**
 
@@ -68,6 +70,9 @@ Create a new cluster configuration with OpenStack defaults:
 opencenter cluster init prod-cluster \
   --org my-company \
   --type openstack
+
+# Make the cluster explicit for commands that accept the active cluster
+opencenter cluster use my-company/prod-cluster
 ```
 
 **What happens:**
@@ -92,7 +97,85 @@ Next steps:
 3. Generate GitOps repository: opencenter cluster generate prod-cluster
 ```
 
-## Step 2: Configure OpenStack Credentials
+## Step 2: Discover Provider Metadata and Configure OpenStack Credentials
+
+Before editing the provider block, use the read-only provider plan to discover
+values from the selected OpenStack profile:
+
+```bash
+opencenter cluster provider openstack plan my-company/prod-cluster \
+  --os-cloud <clouds.yaml-profile>
+```
+
+The plan can propose typed values for `auth_url`, `region`, `project_id`,
+`image_id`, `network_id`, `subnet_id`, `router_external_network_id`, and
+`availability_zone`. It reports changes, required selections, warnings, and
+`Remote actions: none`; it does not write the cluster file or mutate OpenStack.
+
+If discovery finds more than one candidate, provide only the selectors it
+requests. Keep the internal and external networks distinct:
+
+```bash
+opencenter cluster provider openstack plan my-company/prod-cluster \
+  --os-cloud <clouds.yaml-profile> \
+  --image-id <linux-image-id> \
+  --network-id <internal-network-id> \
+  --external-network-id <external-network-id> \
+  --subnet-id <internal-subnet-id> \
+  --availability-zone <availability-zone>
+```
+
+To let generated OpenTofu create the internal network and subnet, use
+`--create-internal-network` on both plan and apply instead of network or subnet
+selectors:
+
+```bash
+opencenter cluster provider openstack plan my-company/prod-cluster \
+  --os-cloud <clouds.yaml-profile> \
+  --create-internal-network
+```
+
+Create mode skips internal network discovery and leaves OpenTofu responsible
+for those resources. It cannot be combined with `--network-id`, `--subnet-id`,
+or a configured VLAN network. If existing internal selections must be cleared,
+add `--replace` to both plan and apply. Likewise, use `--replace` on both
+commands only when replacing an already-populated provider value; it is not
+needed to fill a blank value.
+
+Apply create mode with the same flag:
+
+```bash
+opencenter cluster provider openstack apply my-company/prod-cluster \
+  --os-cloud <clouds.yaml-profile> \
+  --create-internal-network
+```
+
+Review the plan, then apply the same selections. Optional profile imports are
+available for application credentials and TLS settings:
+
+```bash
+opencenter cluster provider openstack apply my-company/prod-cluster \
+  --os-cloud <clouds.yaml-profile> \
+  --image-id <linux-image-id> \
+  --network-id <internal-network-id> \
+  --external-network-id <external-network-id> \
+  --subnet-id <internal-subnet-id> \
+  --availability-zone <availability-zone> \
+  --import-auth \
+  --import-tls
+```
+
+`--import-auth` requires both the application-credential ID and secret in the
+profile. `--import-tls` persists the profile's CA and TLS settings; if it would
+set `insecure: true`, use `--replace --import-tls` deliberately. In text mode,
+apply asks for confirmation; use the global `--yes` for non-interactive runs.
+Structured output requires `--yes`, and global `--dry-run` stops before the
+local write. Provider plan/apply has no remote mutation path; infrastructure
+creation happens later through generated OpenTofu.
+
+See the [provider plan reference](../reference/opencenter/opencenter_cluster_provider_openstack_plan.md)
+and [provider apply reference](../reference/opencenter/opencenter_cluster_provider_openstack_apply.md)
+for the complete flag sets.
 
 Edit the configuration file to add your OpenStack credentials:
 
@@ -240,6 +323,39 @@ opencenter:
 * Enable Velero (disaster recovery)
 * Optional: Harbor (private registry), Headlamp (dashboard)
 
+### Optional: Provision storage for an individual service
+
+Storage provisioning is separate from provider reconciliation. Run a plan/apply
+pair once for each enabled service that needs an OpenStack object store. The
+supported pairs are `loki` with `swift` or `s3`, and `tempo`, `etcd-backup`,
+or `velero` with `s3`:
+
+```bash
+opencenter cluster service storage plan loki \
+  --cluster my-company/prod-cluster \
+  --backend swift \
+  --os-cloud <clouds.yaml-profile>
+
+opencenter cluster service storage apply loki \
+  --cluster my-company/prod-cluster \
+  --backend swift \
+  --os-cloud <clouds.yaml-profile>
+```
+
+For S3-compatible storage, use `--backend s3`; `--container` selects the
+container or bucket name and `--s3-endpoint` overrides the profile endpoint.
+Storage plan performs preflight and reports redacted changes and ordered remote
+actions without creating a container, creating credentials, or writing the
+configuration. Existing complete credentials are reused; a partial credential
+pair requires `--rotate-credentials` on both plan and apply.
+
+Storage apply provisions the external credentials and writes the typed service
+and secret fields. It is different from `opencenter secrets sync`, which reads
+configured secrets and writes SOPS-encrypted Kubernetes manifests. Use
+`secrets sync` after storage provisioning and before publishing the generated
+GitOps repository. See the [storage plan reference](../reference/opencenter/opencenter_cluster_service_storage_plan.md)
+and [storage apply reference](../reference/opencenter/opencenter_cluster_service_storage_apply.md).
+
 ## Step 5: Validate Configuration
 
 Validate your configuration before deployment:
@@ -247,6 +363,10 @@ Validate your configuration before deployment:
 ```bash
 opencenter cluster validate prod-cluster
 ```
+
+Validation is offline by default. Use `--validation online` when provider and
+Git remote checks are also required. Re-run validation after editing the
+configuration and before generation.
 
 **What’s validated:**
 
@@ -324,7 +444,24 @@ Next steps:
 5. Bootstrap cluster: opencenter cluster deploy prod-cluster
 ```
 
-## Step 7: Initialize Git Repository
+Generation validates before writing unless `--skip-validation` is supplied.
+Generated overlays can contain encrypted content, so treat the generated
+repository as sensitive.
+
+## Step 6a: Synchronize Secrets and Validate Manifests
+
+After storage provisioning and generation, materialize encrypted service
+secrets and validate the generated manifests:
+
+```bash
+opencenter secrets sync my-company/prod-cluster
+opencenter cluster validate my-company/prod-cluster --manifests
+```
+
+Check that generated service `secret.yaml` files contain SOPS values such as
+`ENC[...]`, not plaintext. Resolve security findings before publishing.
+
+## Step 7: Initialize and Publish the Git Repository
 
 Initialize and push to Git (GitOps requires Git):
 
@@ -355,12 +492,25 @@ git push -u origin main
 * Git enables rollback (revert commits)
 * Git enables collaboration (pull requests)
 
+`openCenter` does not commit or push the GitOps repository. Publish the
+generated and encrypted files explicitly and confirm that repository CI checks
+pass:
+
+```bash
+git add -A
+git commit -m "deploy my-company/prod-cluster"
+git push
+```
+
 ## Step 8: Bootstrap Cluster
 
 Deploy the cluster (this takes 30-45 minutes):
 
 ```bash
-opencenter cluster deploy prod-cluster
+# Preview the workflow without mutating local or remote state
+opencenter --dry-run cluster deploy my-company/prod-cluster
+
+opencenter cluster deploy my-company/prod-cluster
 ```
 
 **What happens:**
@@ -394,6 +544,10 @@ Phase 3: GitOps Bootstrap (5-10 minutes)
 
 Cluster is ready!
 ```
+
+Deploy consumes the already-published GitOps repository; it does not publish
+that repository for you. The operation is resumable, so after fixing a failed
+step, rerun `cluster deploy` for the same cluster.
 
 **Monitor progress:**
 
@@ -435,6 +589,17 @@ kubectl get helmreleases -A
 flux get kustomizations
 
 # Expected output: All Kustomizations in Ready state
+```
+
+Flux reconciliation can continue after deployment returns. For targeted
+diagnosis, use:
+
+```bash
+flux get kustomizations -A
+flux get helmreleases -A
+flux get sources git -A
+flux logs --tail=50
+flux reconcile kustomization <name> --with-source
 ```
 
 **All checks passed?** Your cluster is ready for production workloads!

@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: cluster-lifecycle-map
 title: "Explain the Cluster Lifecycle"
 sidebar_label: Cluster Lifecycle
@@ -41,14 +41,9 @@ Existing repositories can enter through `cluster import scan`, `report`, and `ap
 
 ## Generate path
 
-`SetupService.Setup` resolves the cluster, loads configuration, checks schema version `2.0`, validates setup inputs, and then calls the GitOps package directly:
+`SetupService.Setup` resolves the cluster, loads configuration, checks schema version `2.0`, validates setup inputs, and calls `SetupService.generateGitOpsManifestsWithPromotion`. That method builds `gitops.StagedGenerationOptions` and delegates the live generation flow to `gitops.GenerateClusterTree`.
 
-1. `gitops.CopyBase` copies the base repository structure.
-2. `gitops.RenderClusterAppsWithEncryption` renders application descriptors/catalog actions and encrypts temporary override values before promotion.
-3. `gitops.RenderInfrastructureCluster` renders provider-selected infrastructure assets.
-4. `gitops.RenderClusterFluxBridge` renders the per-cluster Flux bridge.
-5. For non-Kind providers, `tofu.Provision` performs the optional OpenTofu provisioning step in the generate path.
-6. Generated files are counted and manifests are validated; validation warnings are returned in the result.
+`GenerateClusterTree` owns the single staged-tree transaction. Its internal stages create a private workspace, copy and render the base and cluster content, optionally render infrastructure and the Flux bridge, materialize provider infrastructure, encrypt the staged application overlay, validate manifests, run ownership preflight, count generated files, and promote the validated tree. OpenTofu materialization is skipped for both Kind and Magnum; other providers may supply the OpenTofu materialization stage. Dry-run uses the same staged tree and preflight without the final promotion.
 
 `PipelineGenerator` remains a supporting `internal/gitops` API for staged generation abstractions. It is not the live top-level path used by `SetupService`.
 

@@ -6,8 +6,6 @@
 # Legacy configuration examples whose schema-era paths or fields are unclear.
 docs/concepts/reference-architecture.md:opencenter.cluster.networking
 docs/getting-started/getting-started.md:opencenter.cluster.networking
-docs/getting-started/getting-started.md:secrets.global.openstack
-docs/getting-started/kind-local-development.md:opencenter.cluster.networking
 docs/getting-started/multi-cluster-setup.md:opencenter.cluster.master_count
 docs/getting-started/multi-cluster-setup.md:opencenter.cluster.master_flavor
 docs/getting-started/multi-cluster-setup.md:opencenter.cluster.worker_count
@@ -26,7 +24,6 @@ docs/getting-started/openstack-first-cluster.md:opencenter.cluster.networking
 docs/getting-started/openstack-first-cluster.md:opencenter.cluster.storage
 docs/getting-started/openstack-first-cluster.md:opencenter.cluster.worker_count
 docs/getting-started/openstack-first-cluster.md:opencenter.cluster.worker_flavor
-docs/getting-started/openstack-first-cluster.md:opencenter.infrastructure.openstack
 docs/getting-started/openstack-first-cluster.md:opencenter.services.harbor.admin_password
 docs/getting-started/openstack-first-cluster.md:opencenter.services.keycloak.admin_password
 docs/getting-started/openstack-first-cluster.md:opencenter.services.kube-prometheus-stack.grafana_admin_password
@@ -36,7 +33,6 @@ docs/getting-started/vmware-deployment.md:opencenter.cluster.master_count
 docs/getting-started/vmware-deployment.md:opencenter.cluster.networking
 docs/getting-started/vmware-deployment.md:opencenter.cluster.storage
 docs/getting-started/vmware-deployment.md:opencenter.cluster.worker_count
-docs/getting-started/vmware-deployment.md:opencenter.infrastructure.vmware
 docs/getting-started/vmware-deployment.md:opencenter.services.harbor.admin_password
 docs/getting-started/vmware-deployment.md:opencenter.services.keycloak.admin_password
 docs/getting-started/vmware-deployment.md:opencenter.services.kube-prometheus-stack.grafana_admin_password
@@ -63,17 +59,7 @@ docs/operations/troubleshoot-deployment.md:secrets.global.openstack
 docs/operations/upgrade-kubernetes.md:opencenter.cluster.kubespray_version
 docs/operations/validate-configuration.md:opencenter.cluster.networking
 docs/operations/validate-configuration.md:secrets.sopsAgeKeyFile
-docs/providers/vmware-quick-start.md:opencenter.infrastructure.cloud.vmware.nodes
-docs/providers/vmware-terraform-template.md:opencenter.infrastructure.cloud.vmware.nodes
-docs/providers/vmware.md:opencenter.cluster.kubernetes.master_count
-docs/providers/vmware.md:opencenter.cluster.kubernetes.worker_count
-docs/providers/vmware.md:opencenter.gitops.git_dir
-docs/providers/vmware.md:opencenter.infrastructure.cloud.vmware.nodes
-docs/providers/vmware.md:opencenter.infrastructure.ssh_user
 docs/providers/vmware.md:opencenter.services.gateway.hostname
 docs/providers/vmware.md:opencenter.services.vsphere-csi.image_repository
 docs/providers/vmware.md:opencenter.services.vsphere-csi.image_tag
 docs/providers/vmware.md:opencenter.services.vsphere-csi.storage_class
-docs/release/1.0.0-rc01.md:opencenter.cluster.organization
-docs/release/1.0.0-rc01.md:opencenter.kubernetes
-docs/release/1.0.0-rc01.md:secrets.sops.age_keys

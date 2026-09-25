@@ -18,7 +18,7 @@ Use this page to choose a provider before creating a cluster. The [Infrastructur
 | --- | --- | --- | --- |
 | OpenStack | Production private-cloud clusters | openCenter provisions infrastructure with OpenTofu and deploys Kubernetes with the supported bootstrap flow | [OpenStack first cluster](../getting-started/openstack-first-cluster.md) |
 | Magnum | Managed Kubernetes on OpenStack | The existing Magnum cluster template owns image, network, and COE choices; openCenter creates, waits for, and deletes Magnum clusters | [Infrastructure Providers Reference](../reference/providers.md#magnum) |
-| VMware | Existing vSphere estates | VMs are pre-provisioned; node definitions live under `infrastructure.compute.master_nodes` and `worker_nodes` | [VMware guide](vmware.md) · [Quick start](vmware-quick-start.md) |
+| VMware | Existing vSphere estates | VMs are pre-provisioned; node definitions live under `infrastructure.compute.master_nodes` and `worker_nodes` | [VMware provider guide](vmware.md) |
 | Baremetal | Physical hosts already managed by the operator | Hosts are pre-provisioned and described with static node definitions; openCenter does not provision cloud resources | [Infrastructure Providers Reference](../reference/providers.md) |
 | Kind | Local development and CI | Kind runs a local cluster in Docker or Podman; it is not a production infrastructure target | [Kind local development](../getting-started/kind-local-development.md) |
 

@@ -65,7 +65,7 @@ def is_maintained_documentation(filename: str) -> bool:
         return True
     if not path.startswith("docs/") or not path.endswith(".md"):
         return False
-    if path in {"docs/README.md", "docs/llm-code-map.md"}:
+    if path == "docs/README.md":
         return False
 
     parts = PurePosixPath(path).parts

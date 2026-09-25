@@ -1,8 +1,8 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: architecture
-title: "Architecture"
-sidebar_label: Architecture
+title: "Architecture: rationale and design"
+sidebar_label: Architecture (concepts)
 description: System design, core components, and architectural decisions behind openCenter.
 doc_type: explanation
 audience: "architects, developers"
@@ -10,7 +10,7 @@ tags: [architecture, design, components, patterns]
 ---
 # Architecture
 
-**Purpose:** For technical users, explains the system design and architectural decisions behind openCenter, covering components through design principles.
+**Role:** Rationale-focused conceptual architecture for architects and operators. It explains why openCenter is designed this way, including trade-offs and design principles; it is not the source-grounded contributor package map.
 
 Understanding openCenter’s architecture helps you make informed decisions about deployment, customization, and troubleshooting. This explanation covers the key architectural patterns and design choices.
 

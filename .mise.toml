@@ -653,7 +653,6 @@ python3 hack/scripts/audit_doc_frontmatter.py --strict \
   --ignore docs/dead-code-removal-report.md \
   --ignore docs/deduplication-report.md \
   --ignore docs/library-extraction-report.md \
-  --ignore docs/llm-code-map.md \
   --ignore docs/operations/manage-worker-pools.md \
   --ignore docs/refactor-audit-report.md \
   --ignore docs/reference/services/README.md \

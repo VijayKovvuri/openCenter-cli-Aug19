@@ -40,6 +40,22 @@ Key characteristics:
 * Supports vSphere CSI driver for persistent storage
 * No automatic VM lifecycle management
 
+When `opencenter cluster generate` runs for the `vmware` provider, it selects
+the embedded `main-vmware.tf.tpl` template. The generated infrastructure
+configuration passes the pre-provisioned node lists to the Kubespray module and
+the selected CNI module; it does not contain an infrastructure-provisioning
+module. VM creation, deletion, and resizing therefore remain outside
+openCenter.
+
+Provider-specific boundaries:
+
+| Capability | VMware behavior |
+| --- | --- |
+| VM provisioning | Manual; VMs are pre-provisioned |
+| Node scaling | Manual; update the static node definitions and infrastructure outside openCenter |
+| Persistent storage | vSphere CSI |
+| Load balancer | MetalLB; Octavia is disabled |
+
 ## Prerequisites
 
 ### Infrastructure Requirements
@@ -47,7 +63,7 @@ Key characteristics:
 * VMware vSphere 7.0 or later
 * Pre-provisioned Ubuntu 24.04 VMs (minimum 3 control plane + 2 worker nodes)
 * VMs must have network connectivity to each other
-* SSH access to all VMs from bastion/deployment host
+* SSH access to all VMs from the deployment host (a bastion is optional)
 * vCenter credentials (for CSI driver integration)
 
 ### VM Specifications
@@ -68,7 +84,7 @@ Worker nodes (minimum):
 
 * Static IP addresses for all nodes
 * DNS resolution for all node hostnames
-* Bastion host with SSH access to all nodes
+* Deployment host with SSH access to all nodes (a bastion is optional)
 * Firewall rules allowing Kubernetes traffic (6443, 2379-2380, 10250-10252)
 
 ## Architecture
@@ -189,6 +205,18 @@ Node roles:
 * `master`: Control plane node (runs etcd, API server, scheduler, controller)
 * `worker`: Worker node (runs application workloads)
 
+The generated VMware template also passes the configured SSH user and key path
+to Kubespray. For a deployment host that needs an explicit key, set them under
+`infrastructure.ssh`:
+
+```yaml
+opencenter:
+  infrastructure:
+    ssh:
+      user: ubuntu
+      key_path: /path/to/my-vmware-cluster-key
+```
+
 ### vSphere Integration
 
 vSphere CSI driver configuration:
@@ -209,6 +237,29 @@ secrets:
     datacenters: Datacenter1
     insecure_flag: "false"
     port: "443"
+```
+
+### Generated networking and HA defaults
+
+The VMware infrastructure template uses these defaults unless the v2
+configuration overrides them:
+
+* Node network: `172.26.0.0/24`
+* VRRP control-plane address: `172.26.0.5`, with VRRP enabled
+* Kubernetes API address: `infrastructure.k8s_api_ip`, or the VRRP address when unset
+* Calico interface: `ens192`
+* OpenStack Octavia: disabled (`use_octavia = false`)
+
+To override the Calico interface on VMs with a different NIC, configure the
+interface explicitly:
+
+```yaml
+opencenter:
+  cluster:
+    kubernetes:
+      network_plugin:
+        calico:
+          cni_iface: ens224
 ```
 
 ## Deployment
@@ -260,6 +311,11 @@ opencenter cluster generate myorg/my-vmware-cluster
 # ✓ Generated Ansible inventory
 # ✓ Encrypted secrets with SOPS
 ```
+
+Inspect the generated `infrastructure/clusters/<cluster-name>/main.tf` before
+deployment. For VMware it should contain the static `master_nodes` and
+`worker_nodes` locals, a `kubespray-cluster` module, and the selected CNI
+module; it should not contain a VM or other infrastructure-provisioning module.
 
 ### Step 5: Bootstrap Cluster
 
