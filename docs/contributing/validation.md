@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: dev-cluster-validation
 title: "Cluster Validate Execution Flow"
 sidebar_label: Cluster Validate Execution Flow
@@ -34,7 +34,7 @@ Only v2 configs with `schema_version: "2.0"` are supported.
 | `internal/cluster/validate_service.go` | Config path resolution, v2 loading, readiness checks, mode-gated online checks, debug config export. |
 | `internal/cluster/validation_formatter.go` | Text and JSON formatting from the operator report and structured validation issues. |
 | `internal/config/v2/loader.go` | Native v2 load pipeline: YAML parsing, normalization, defaults, reference resolution, schema validation. |
-| `internal/config/v2/readiness.go` | Offline deployment-readiness rules for provider config, GitOps auth, and enabled-service secrets. |
+| `internal/config/v2/readiness.go` | Offline deployment-readiness rules for provider config, GitOps auth, storage profiles, S3 buckets, and enabled-service secrets. |
 | `internal/cloud/openstack/discovery.go` | Live OpenStack catalog discovery used only by online validation. |
 
 ## Command Flow
@@ -138,7 +138,6 @@ When `opencenter.infrastructure.provider` is `openstack`, readiness validation r
 * `project_id`
 * `image_id`
 * application credential ID and secret
-* `network_id` or `network_name`
 * master flavor when `master_count > 0`
 * worker flavor when `worker_count > 0`
 * Windows worker flavor when `worker_count_windows > 0`
@@ -174,7 +173,7 @@ Configuring both SSH auth and token auth for the same repository is an error.
 
 #### Enabled-Service Secret Checks
 
-Only enabled services are checked. Empty strings and `CHANGEME` are treated as missing.
+Only enabled services are checked. Empty strings and `CHANGEME` are treated as missing. Storage profiles and S3 bucket names are also checked independently of the service-secret checks.
 
 The v2-native secret map currently covers:
 

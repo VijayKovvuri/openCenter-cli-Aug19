@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: cli-architecture
 title: "Understand the openCenter CLI Architecture"
 sidebar_label: Architecture
@@ -56,7 +56,7 @@ The command layer owns argument parsing, prompts, presentation, exit behavior, a
 | `internal/cluster` | Cluster lifecycle services and service-level result types. |
 | `internal/cluster/orchestration` | Provider capability discovery, prompts, change review, and orchestration contracts. |
 | `internal/cluster/provider/openstack`, `internal/cluster/storage/openstack` | Typed OpenStack provider planning and explicit one-service storage provisioning with persistence/recovery boundaries. |
-| `internal/cloud` | Provider factory and shared provider-facing infrastructure types. |
+| `internal/cloud` | Drift-provider interface/factory and shared provider-facing infrastructure types; lifecycle deploy providers are wired separately. |
 | `internal/cloud/kind`, `internal/cloud/openstack`, `internal/cloud/vmware`, `internal/cloud/magnum` | Provider-specific implementations and API integration; `internal/cloud/magnum` is a small standalone client for Magnum managed-Kubernetes cluster lifecycle operations. |
 | `internal/gitops` | GitOps workspace generation, transactions, checkpoints, dry runs, and embedded assets. |
 | `internal/gitops/stages` | Ordered generation-stage implementations. |
@@ -180,7 +180,7 @@ Tests are colocated with packages and include unit, property, integration-style,
 5. Run `go vet ./...` and configured lint checks.
 6. Run `go mod tidy -diff` after dependency or import changes.
 
-Property and scenario suites are useful for configuration, secrets, and lifecycle invariants. Generated or tools-tag code requires separate validation because it is not covered by the default package build. The documentation-drift test scans repository documentation, so examples must describe only supported command syntax.
+Property and scenario suites are useful for configuration, secrets, and lifecycle invariants. Generated or tools-tag code requires separate validation because it is not covered by the default package build. The docs workflow audits changed Markdown and runs Vale; it does not regenerate CLI pages. The documentation-drift test scans repository documentation, so examples must describe only supported command syntax.
 
 ## Operational concerns
 

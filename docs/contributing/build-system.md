@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: build-system
 title: "Build System (Mise)"
 sidebar_label: Build System (Mise)
@@ -29,7 +29,7 @@ openCenter-cli uses [mise](https://mise.jdx.dev/) rather than Make: it pins tool
 | `golang.org/x/vuln/cmd/govulncheck` | `latest` | `go:` backend |
 | `gitleaks/gitleaks` | `latest` | `aqua:` backend |
 
-Only Go and SOPS are hard-pinned; `kubectl`, `kind`, `helm`, `govulncheck`, and `gitleaks` float on `latest` locally. CI workflows pin some of these independently for reproducibility -- notably `deploy-kind.yml` pins `KIND_VERSION=v0.29.0`, `KUBECTL_VERSION=v1.35.4`, `HELM_VERSION=v3.19.0`, `FLUX_VERSION=v2.6.4`, and `SOPS_VERSION=3.13.3`. See [GitHub Actions Workflows](../reference/github-actions-workflows.md).
+Go, golangci-lint, and SOPS are hard-pinned; `kubectl`, `kind`, `helm`, `govulncheck`, and `gitleaks` float on `latest` locally. CI workflows pin some deployment tools independently for reproducibility -- notably `deploy-kind.yml` pins `KIND_VERSION=v0.29.0`, `KUBECTL_VERSION=v1.35.4`, `HELM_VERSION=v3.19.0`, `FLUX_VERSION=v2.6.4`, and `SOPS_VERSION=3.13.3`. See [GitHub Actions Workflows](../reference/github-actions-workflows.md).
 
 ## Environment defaults (`[env]`)
 
@@ -99,11 +99,11 @@ CONTAINER_RUNTIME = "podman"
 
 | Task | What it does |
 | --- | --- |
-| `schema` | `go run ./cmd/schema-gen/main.go --version 2.0 --output schema/cluster.schema.json`. |
+| `schema` | `./bin/opencenter cluster schema --pretty --out schema/cluster.schema.json`. |
 | `schema-gen` | `go run ./cmd/schema-gen/main.go --version 2.0 --output schema/cluster.schema.json`. |
 | `schema-v2` | Regenerates `schema/opencenter-v2.schema.json` by writing and running a throwaway Go test against `internal/config/v2schema`, then deleting the test file. |
 | `validate` | `./bin/opencenter cluster validate`. |
-| `schema-verify` | End-to-end schema-change smoke test: build, generate schema, `cluster init`, `cluster set`, `cluster validate`, unit tests, BDD tests -- all against `OPENCENTER_CONFIG_DIR=./testdata/config`. |
+| `schema-verify` | End-to-end schema-change smoke test: build, generate schema, `cluster init`, `cluster update --opencenter.provider=aws`, `cluster validate`, unit tests, and BDD tests -- all against `OPENCENTER_CONFIG_DIR=./testdata/config`. |
 
 ### Documentation
 
@@ -125,7 +125,7 @@ CONTAINER_RUNTIME = "podman"
 | `terraform-generate <cluster> [output-dir]` | Builds, then `./bin/opencenter cluster terraform-generate <cluster> --output-dir=<dir>`. |
 | `preflight` | `./bin/opencenter cluster validate`. |
 | `install-shell-integration` | `./hack/install-shell-integration.sh`. |
-| `install-hooks` | Verifies `.git/hooks/pre-commit` exists and `chmod +x`s it. |
+| `install-hooks` | Runs `pre-commit install --config .pre-commit-config.yaml` to install hooks from the tracked configuration. |
 
 ### Cleanup
 

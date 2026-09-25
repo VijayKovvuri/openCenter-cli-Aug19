@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: code-structure
 title: "Codebase Organization"
 sidebar_label: Codebase Organization
@@ -85,10 +85,11 @@ Tests follow the source 1:1: `cluster_init_integration_test.go`, `cluster_deploy
 
 ### Providers (`internal/cloud/`, `internal/provision/`, `internal/tofu/`)
 
-* `internal/cloud/openstack/` -- OpenStack drift detection, discovery, preflight checks.
+* `internal/cloud/openstack/` -- OpenStack drift detection, discovery, and preflight checks.
 * `internal/cloud/vmware/` -- VMware/vSphere drift detection.
-* `internal/cloud/kind/` -- Kind cluster lifecycle.
-* `internal/cloud/magnum/` -- OpenStack Magnum managed-Kubernetes provider (the most recently added provider; see [Adding New Infrastructure Providers](adding-providers.md)).
+* `internal/cloud/kind/` -- Kind cluster lifecycle; it is not a `CloudProvider` drift implementation.
+* `internal/cloud/magnum/` -- OpenStack Magnum managed-Kubernetes API client; its lifecycle wiring lives in `internal/cluster/magnum_*` (see [Adding New Infrastructure Providers](adding-providers.md)).
+* `internal/cluster/bootstrap_provider_infra.go` -- shared OpenTofu bootstrap for OpenStack, VMware, and baremetal; `kind_bootstrap_provider.go` and `magnum_bootstrap_provider.go` own their dedicated lifecycle paths.
 * `internal/provision/` -- embedded OpenTofu/Terraform provisioning templates (`embed.go`).
 * `internal/tofu/` -- OpenTofu execution wrapper (falls back to `terraform` binary if `tofu` is unavailable).
 
@@ -121,7 +122,7 @@ See [Audit Signing Key](../reference/audit-key.md) for what the audit logger act
 
 ### Other packages
 
-* `internal/ansible/` and `internal/observability/` referenced in older documentation **do not exist on this branch** -- do not link to them. Ansible/Kubespray invocation lives in `internal/cluster` (the bootstrap provider steps shell out to `ansible-playbook` directly); structured logging lives in `internal/logging/`.
+* `internal/ansible/` and `internal/observability/` referenced in older documentation **do not exist on this branch** -- do not link to them. The shared bootstrap invokes OpenTofu from `internal/cluster`; the generated OpenTofu module owns the Kubespray `local-exec` invocation. Structured logging lives in `internal/logging/`.
 * `internal/core/paths/` -- cluster path-layout resolution (org-based directory strategy).
 * `internal/credentials/` -- cloud credential extraction from `v2.Config` (`extractor.go`, `openstack.go`, `aws.go`).
 * `internal/di/` -- dependency-injection container (`app.go`, `container.go`, `providers.go`) that wires services (like `BootstrapService`) with their dependencies.

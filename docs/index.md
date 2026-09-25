@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: index
 title: "openCenter CLI Documentation"
 sidebar_label: openCenter CLI Documentation
@@ -10,7 +10,7 @@ tags: [opencenter, cli, documentation, home]
 ---
 # openCenter CLI Documentation
 
-**Purpose:** For all users, points to the openCenter CLI documentation organised by lifecycle category (getting started, operations, reference, concepts, providers, contributing).
+**Purpose:** For all users, points to the published openCenter CLI documentation organised by lifecycle category (getting started, operations, reference, concepts, providers, contributing). Repository navigation and internal architecture maps are intentionally kept outside this reader-facing index.
 
 openCenter is a command-line tool that turns a single declarative YAML file into a production-ready Kubernetes cluster with GitOps management. It standardises cluster deployment across OpenStack, VMware, Baremetal, Kind, and OpenStack Magnum, and ships configuration validation, secrets management, and FluxCD-ready repository generation.
 
@@ -82,15 +82,17 @@ Background and rationale -- the "why" behind the design.
 * [Plugin External CLI](concepts/plugin-external-cli.md)
 * [Provider Comparison](concepts/provider-comparison.md)
 
-For the code-level (contributor-facing) architecture map, rather than the concept-level explanation above, see [Understand the openCenter CLI Architecture](architecture.md) and the [Architecture Maps](CODEMAPS/INDEX.md) under Contributing below.
+For the code-level (contributor-facing) architecture map, rather than the concept-level explanation above, see [Understand the openCenter CLI Architecture](architecture.md) and [Navigate the openCenter CLI Code Map](llm-code-map.md). The repository-only `docs/CODEMAPS/` maps are internal development material and are not part of the published documentation navigation; code-oriented readers can use the repository's `llms.txt` guide.
 
 ## Contributing
 
 Developer documentation for contributors and maintainers.
 
 * [Contributing Guide](contributing/contributing.md)
+* [Pre-commit Hooks](contributing/pre-commit-hooks.md) -- install local checks and understand the documentation policy.
 * [Development Environment Setup](contributing/development-setup.md)
 * [Codebase Organization](contributing/code-structure.md)
+* [Adding a Built-in Service](contributing/adding-a-built-in-service.md)
 * [Understand the openCenter CLI Architecture](architecture.md) -- terse, contributor-facing package/entry-point map (complements [Codebase Organization](contributing/code-structure.md) and the concept-level [Architecture](concepts/architecture.md) above).
 * [Navigate the openCenter CLI Code Map](llm-code-map.md) -- entry points, package responsibilities, and safe-change boundaries.
 * [Testing Guide](contributing/testing-guide.md)
@@ -107,11 +109,23 @@ Developer documentation for contributors and maintainers.
 * [cluster deploy -- OpenStack Provider](contributing/cluster-deploy-openstack.md)
 * [Kind Cluster Verification Guide](contributing/kind-cluster-verification.md)
 
-### Architecture maps (code-map deep dives)
+### Internal repository maps
 
-Durable architecture maps for contributors and code-oriented agents, not part of the published reader-facing site -- see [Architecture Maps Index](CODEMAPS/INDEX.md) for the full set (CLI commands, cluster lifecycle, config system, DI container, GitOps engine, import/operations/resilience, OpenStack provider storage operations, providers, rendering ownership and secret artifacts, runtime extensions and local development, secrets management).
+The `docs/CODEMAPS/` directory contains durable architecture deep dives for
+contributors and code-oriented agents. These maps are not published reader-facing
+docs and are intentionally omitted from the navigation above. Use the repository
+`llms.txt` guide or `docs/README.md` map when you need them.
 
-## Release notes
+## Release notes (current source and historical snapshots)
+
+Current published notes are maintained by GitHub Releases. The release workflow
+`.github/workflows/release.yml` is the source of truth and runs
+`gh release create --generate-notes` for pushed `v*` tags. The checked-in pages
+below are manually maintained historical snapshots, not generated output; the
+local `mise run release`/`mise run publish` helpers only write preflight notes to
+`bin/release/`.
+
+* [GitHub Releases](https://github.com/opencenter-cloud/openCenter-cli/releases) -- current published release notes.
 
 * [1.0.0-rc01](release/1.0.0-rc01.md)
 * [1.0.0-rc02](release/1.0.0-rc02.md)
@@ -122,7 +136,11 @@ Durable architecture maps for contributors and code-oriented agents, not part of
 
 ## Documentation framework
 
-These docs follow the [Diátaxis framework](https://diataxis.fr/) but are organised by lifecycle category (getting-started, operations, reference, concepts, providers, contributing) rather than by Diátaxis type. See [docs/README.md](README.md) for the complete site map and editing rules.
+These published docs follow the [Diátaxis framework](https://diataxis.fr/) but
+are organised by lifecycle category (getting-started, operations, reference,
+concepts, providers, contributing) rather than by Diátaxis type. The repository
+map and editing rules live in [docs/README.md](README.md), which is not itself a
+published docs page.
 
 ## Getting help
 

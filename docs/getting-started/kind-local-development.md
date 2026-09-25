@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: kind-local-development
 title: "Set Up Local Development with Kind"
 sidebar_label: Set Up Local
@@ -120,11 +120,12 @@ opencenter:
   cluster:
     kubernetes:
       version: "1.33.5"
-
-    networking:
       pod_subnet: "10.42.0.0/16"
       service_subnet: "10.43.0.0/16"
-      cni_plugin: calico
+      # With --kind-disable-default-cni, enable exactly one managed plugin.
+      network_plugin:
+        calico:
+          enabled: true
 
   services:
     # Core services (lightweight for dev)
@@ -670,7 +671,7 @@ You now have a local development environment for testing Kubernetes applications
 
 This tutorial is based on:
 
-* Kind provider: `docs/providers/README.md:12`
+* Kind provider: [Infrastructure Providers](../providers/README.md) and [Infrastructure Providers Reference](../reference/providers.md)
 * Kind defaults: `internal/config/defaults.go:27-31`
 * Workflow validation: `tests/features/workflow.feature:1-73`
 * Bootstrap process: `cmd/cluster_bootstrap.go`

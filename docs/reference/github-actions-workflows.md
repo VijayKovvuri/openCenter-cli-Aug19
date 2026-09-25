@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: github-actions-workflows
 title: "GitHub Actions Workflows"
 sidebar_label: GitHub Actions Workflows
@@ -12,7 +12,7 @@ tags: [ci, github-actions, workflows, reference]
 
 **Purpose:** For developers and maintainers, documents every CI/CD workflow in `.github/workflows/`.
 
-Common pattern across all workflows: `env: FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`; `actions/checkout@v7`; `actions/setup-go@v6` (`go-version-file: go.mod`, `cache: true`); `runs-on: self-hosted` (except `deploy-kind.yml`, which uses `self-hosted-kvm`). No GitHub-hosted runners are used anywhere in this repository.
+All workflows set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` and use self-hosted runners (`deploy-kind.yml` uses the `self-hosted-kvm` label). Go workflows use `actions/checkout@v7` and `actions/setup-go@v6` with `go-version-file: go.mod` and module caching; the docs and pre-commit workflows do not install Go. No GitHub-hosted runners are used anywhere in this repository.
 
 ## `build-binaries.yml` -- "Publish Binaries"
 
@@ -78,7 +78,7 @@ Step names confirmed real: `kind-create`, `kind-export-kubeconfig`, `gitea-attac
 * Permissions: `contents: write`, `id-token: write`.
 * Job `build-cli`: self-hosted, matrix `{linux/amd64, linux/arm64, darwin/amd64, darwin/arm64}`; builds `dist/opencenter-${VERSION}-${GOOS}-${GOARCH}` (version from `github.ref_name`, `v`-stripped) with full ldflags; uploads per-arch artifacts.
 * Job `build-plugin`: same matrix, builds `./cmd/opencenter-local` -> `dist/opencenter-local-${VERSION}-${GOOS}-${GOARCH}` (no ldflags); uploads.
-* Job `release` (needs both, `id-token: write` + `contents: write`): downloads all artifacts into `dist/` (merge-multiple) -> `sha256sum opencenter-* | sort > checksums.txt` -> installs cosign (`sigstore/cosign-installer@v4.1.2`) -> `cosign sign-blob --yes --bundle <artifact>.bundle <artifact>` for every dist file (keyless, `COSIGN_YES=true`) -> installs syft -> `syft dir:dist -o spdx-json=dist/opencenter.spdx.json` -> `gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes` (using `secrets.GITHUB_TOKEN`).
+* Job `release` (needs both, `id-token: write` + `contents: write`): downloads all artifacts into `dist/` (merge-multiple) -> `sha256sum opencenter-* | sort > checksums.txt` -> installs cosign (`sigstore/cosign-installer@v4.1.2`) -> keylessly signs each `opencenter-*` artifact and `checksums.txt` with a `.bundle` -> installs syft -> `syft dir:dist -o spdx-json=dist/opencenter.spdx.json` -> `gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes` (using `secrets.GITHUB_TOKEN`). The SBOM is generated after signing and is published without a cosign bundle.
 * Does **not** call the `.mise.toml` `release`/`publish` tasks -- CI has its own independent build + sign + SBOM + release pipeline. The `release`/`publish` mise tasks (local binary build plus git-log-based `RELEASE_NOTES_*.md` generation) are a separate, non-CI, local-only helper. See [Release Process](../contributing/release-process.md).
 
 ## `test.yml` -- "Go Tests"

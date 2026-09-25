@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: configuration-schema
 title: "Configuration Schema Reference"
 sidebar_label: Configuration Schema
@@ -96,7 +96,7 @@ Stability note (from `internal/config/v2/config.go`): the overlay-unit types ref
 
 ## `deployment` (`DeploymentConfig`)
 
-`auto_deploy` (bool), `method` (required, one of `kubespray`\|`kamaji`\|`eks`\|`gke`\|`aks`\|`cluster-api`), plus a matching optional sub-block (`kubespray`, `kamaji`, or `cluster_api`). `kubespray.version` is required (semver) when the `kubespray` block is present; it also carries a `modules` map and a `kubespray_cluster` module config for enabling/version-pinning individual Kubespray roles.
+`auto_deploy` (bool), `method` (required, schema enum `kubespray`\|`kamaji`\|`eks`\|`gke`\|`aks`\|`cluster-api`), plus a matching optional sub-block (`kubespray`, `kamaji`, or `cluster_api`). The current deployment validator implements only `kubespray` and `kamaji`; `eks`, `gke`, `aks`, and `cluster-api` are accepted by the struct tag/schema but rejected when `ValidateDeployment` resolves a method. `kubespray.version` is required (semver) when the `kubespray` block is present; it also carries a `modules` map and a `kubespray_cluster` module config for enabling/version-pinning individual Kubespray roles.
 
 ## `secrets` (`SecretsConfig`)
 

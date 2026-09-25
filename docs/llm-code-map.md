@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: cli-llm-code-map
 title: "Navigate the openCenter CLI Code Map"
 sidebar_label: LLM Code Map
@@ -46,7 +46,7 @@ The canonical dependency graph is `internal/di.App`, constructed explicitly by `
 | Paths | `internal/core/paths` and focused configuration path code | Filesystem layout and resolution policy. Avoid command-local path rules. |
 | Cluster services | `internal/cluster` | Lifecycle use cases, options, and results. |
 | Provider orchestration | `internal/cluster/orchestration` | Capability contracts, prompts, reviews, and provider coordination. |
-| Provider clients | `internal/cloud` and its provider subpackages | Cloud-specific discovery and mutation. |
+| Provider clients | `internal/cloud` and its provider subpackages | Cloud-specific discovery and mutation; the `CloudProvider` factory is for drift detection, not all lifecycle providers. |
 | OpenStack provider/storage operations | `internal/cluster/provider/openstack`, `internal/cluster/storage/openstack` | Typed provider planning plus explicit one-service storage provisioning, credential sequencing, and recovery-aware persistence. |
 | GitOps | `internal/gitops` and `internal/gitops/stages` | Workspace lifecycle, generation order, transactions, checkpoints, and dry-run state. |
 | Templates | `internal/template` | Registry, context, rendering, composition, sandboxing, and dependency resolution. |
@@ -111,8 +111,8 @@ Before adding an interface, check whether the consumer needs substitution. Prefe
 
 ### Add or change a provider
 
-1. Implement provider behavior under `internal/cloud/<provider>`.
-2. Register construction through the provider factory or orchestration registry that owns the use case.
+1. Decide which boundary is being extended: lifecycle orchestration under `internal/cluster`, a standalone API client under `internal/cloud/<provider>`, or drift detection through `cloud.CloudProvider`.
+2. Register construction through the provider factory or orchestration/lifecycle switch that owns that use case; do not assume the drift factory is the lifecycle registry.
 3. Keep credentials and provider API types out of `cmd` where possible.
 4. Test discovery separately from mutation and cover transient-error classification.
 

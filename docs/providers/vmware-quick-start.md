@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: vmware-quick-start
 title: "VMware Provider Quick Start"
 sidebar_label: VMware Provider Quick Start
@@ -48,12 +48,16 @@ opencenter:
         vcenter_server: vcenter.example.com
         datacenter: Datacenter1
         datastore: datastore1
-        nodes:
-          - {name: master-1, ip: 192.168.1.10, role: master}
-          - {name: master-2, ip: 192.168.1.11, role: master}
-          - {name: master-3, ip: 192.168.1.12, role: master}
-          - {name: worker-1, ip: 192.168.1.20, role: worker}
-          - {name: worker-2, ip: 192.168.1.21, role: worker}
+        network: VM Network
+        template: ubuntu-24.04-template
+    compute:
+      master_nodes:
+        - {name: master-1, access_ip_v4: 192.168.1.10}
+        - {name: master-2, access_ip_v4: 192.168.1.11}
+        - {name: master-3, access_ip_v4: 192.168.1.12}
+      worker_nodes:
+        - {name: worker-1, access_ip_v4: 192.168.1.20}
+        - {name: worker-2, access_ip_v4: 192.168.1.21}
 ```
 
 ### 3. Validate Cluster
@@ -65,22 +69,20 @@ opencenter cluster validate myorg/my-cluster
 ### 4. Deploy
 
 ```bash
-opencenter cluster generate my-cluster
-opencenter cluster deploy my-cluster
+opencenter cluster generate myorg/my-cluster
+opencenter cluster deploy myorg/my-cluster
 ```
 
 ## Node Configuration
 
-Each node requires:
+Each pre-provisioned node requires:
 
 * `name`: Hostname or FQDN
-* `ip`: Static IPv4 address
-* `role`: `master` or `worker`
+* `access_ip_v4`: Static IPv4 address used for access
 
-Optional fields:
+Optional field:
 
-* `uuid`: VM UUID from vCenter
-* `mac_address`: Primary NIC MAC address
+* `id`: Stable node identifier
 
 ## vSphere CSI Driver
 

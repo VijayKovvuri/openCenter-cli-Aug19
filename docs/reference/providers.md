@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: providers-reference
 title: "Infrastructure Providers Reference"
 sidebar_label: Infrastructure Providers Reference
@@ -10,18 +10,18 @@ tags: [providers, openstack, magnum, vmware, kind, baremetal]
 ---
 # Infrastructure Providers Reference
 
-**Purpose:** Complete reference of the GA infrastructure provider surface and its support boundaries.
+**Purpose:** Complete reference of the available infrastructure-provider lifecycle surface, the separate drift registry, and the planned-provider boundary.
 
 ## Provider Matrix
 
-| Provider | GA Status | Provisioning Model | Deployment Support | Drift Detection | Notes |
-| --- | --- | --- | --- | --- | --- |
-| OpenStack | GA | Automated | Kubespray, Kamaji | Detect + limited reconcile | Most complete automation path |
-| Magnum | Supported; GA status not stated | Managed OpenStack Kubernetes provider | Magnum cluster create/poll and kubeconfig retrieval | Not currently supported | Backed by OpenStack Magnum, not OpenTofu; image, network, and COE choices come from the Magnum cluster template |
-| VMware | GA | Pre-provisioned VMs | Kubespray, Kamaji | Detect only | Canonical name is `vmware`; `vsphere` is an alias |
-| Kind | GA for local/dev | Built-in local runtime | Kind bootstrap flow | Not applicable | Use for development and CI only |
-| Baremetal | GA | Pre-provisioned hosts | Kubespray | Not applicable | Manual provisioning and host lifecycle |
-| AWS | Non-GA infrastructure provider | Not supported for GA cluster provisioning | N/A | Removed from drift registry | AWS service integrations remain supported where used by platform services |
+| Provider | CLI lifecycle status | Lifecycle implementation | Deployment-method validation | Drift registry |
+| --- | --- | --- | --- | --- |
+| OpenStack | Supported | Shared OpenTofu bootstrap; Kubespray is invoked by the generated infrastructure module | `kubespray` and `kamaji` are accepted when compatible | Detect plus limited reconciliation |
+| Magnum | Supported | Direct Magnum API create, poll, kubeconfig export, and delete | The deployment validator does not list Magnum as Kamaji-compatible | None |
+| VMware | Supported | Shared OpenTofu bootstrap with VMware-specific inputs | `kubespray` and `kamaji` are accepted when compatible | Detect only |
+| Kind | Supported for local/dev | Kind and kubectl lifecycle provider | `kubespray` is accepted; the live lifecycle is the dedicated Kind path | None |
+| Baremetal | Supported | Shared infrastructure bootstrap using pre-provisioned nodes | `kubespray` only; Kamaji is rejected | None |
+| AWS, GCP, Azure | Schema/config support only | CLI availability gate rejects these as planned providers | Deployment validators contain compatibility rules, but that does not make the provider available | None |
 
 ## Magnum
 
@@ -35,14 +35,14 @@ Configuration is stored under `opencenter.infrastructure.cloud.magnum` and requi
 
 ## Drift Detection Support
 
-`opencenter cluster drift` currently supports:
+`opencenter cluster drift` uses the separate `internal/cloud.CloudProvider` registry. It currently supports:
 
 * `openstack`
 * `vmware`
 
 Magnum drift detection is not currently supported.
 
-`kind` and `baremetal` do not register infrastructure drift backends because they do not own cloud-resource reconciliation. AWS is intentionally excluded from the GA drift registry.
+`kind`, `baremetal`, and `magnum` do not register infrastructure drift backends. Lifecycle support and drift support are separate boundaries; a provider can deploy without implementing `CloudProvider`.
 
 ## Canonical Naming
 

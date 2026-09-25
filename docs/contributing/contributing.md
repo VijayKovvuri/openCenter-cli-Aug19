@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: contributing
 title: "Contributing to openCenter-cli"
 sidebar_label: Contributing to openCenter-cli
@@ -94,7 +94,7 @@ mise run tidy        # if you added/removed imports
 mise run schema-verify   # if you touched internal/config/v2 or the JSON schema
 ```
 
-The repository's own `.pre-commit-config.yaml` runs a single hook -- `gitleaks/gitleaks` (secret scanning) -- against changed files; `mise run install-hooks` wires that up as a local git pre-commit hook. `.github/workflows/pre-commit.yaml` runs the same hook set in CI on every pull request.
+The repository's `.pre-commit-config.yaml` runs gitleaks (secret scanning) and the staged documentation policy against changed files. The policy requires a staged maintained reader-facing Markdown page whenever a staged public CLI/runtime implementation changes. `mise run install-hooks` installs the hooks from that tracked configuration; `.github/workflows/pre-commit.yaml` runs the same hook set in CI on every pull request. See [Pre-commit hooks](pre-commit-hooks.md) for the path boundaries and exclusions.
 
 ## Submit a pull request
 
@@ -111,7 +111,7 @@ There is no `.github/pull_request_template.md` in this repository, so structure 
 Every pull request runs, per `.github/workflows/*.yml` (see [GitHub Actions Workflows](../reference/github-actions-workflows.md) for full detail):
 
 * `test.yml` -- unit tests with the race detector, `go vet`, and the property-test suite.
-* `pre-commit.yaml` -- gitleaks on changed files.
+* `pre-commit.yaml` -- gitleaks and the staged documentation policy on changed files.
 * `vulncheck.yml` -- `govulncheck ./...`.
 * `docs-p0.yml` -- when Markdown files change.
 

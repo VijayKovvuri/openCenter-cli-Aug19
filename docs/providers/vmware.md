@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: vmware-provider-guide
 title: "VMware Provider Guide"
 sidebar_label: VMware Provider Guide
@@ -120,12 +120,13 @@ opencenter:
   meta:
     name: my-vmware-cluster
     organization: myorg
+    env: production
+    region: on-premises
   infrastructure:
     provider: vmware
-    ssh_user: ubuntu
     os_version: "24"
     bastion:
-      address: bastion.example.com
+      enabled: false
     cloud:
       vmware:
         vcenter_server: vcenter.example.com
@@ -133,37 +134,37 @@ opencenter:
         datastore: datastore1
         cluster: Cluster1
         network: VM Network
-        nodes:
-          - name: master-1.example.com
-            ip: 192.168.1.10
-            role: master
-          - name: master-2.example.com
-            ip: 192.168.1.11
-            role: master
-          - name: master-3.example.com
-            ip: 192.168.1.12
-            role: master
-          - name: worker-1.example.com
-            ip: 192.168.1.20
-            role: worker
-          - name: worker-2.example.com
-            ip: 192.168.1.21
-            role: worker
+        template: ubuntu-24.04-template
+    compute:
+      master_nodes:
+        - {name: master-1.example.com, access_ip_v4: 192.168.1.10}
+        - {name: master-2.example.com, access_ip_v4: 192.168.1.11}
+        - {name: master-3.example.com, access_ip_v4: 192.168.1.12}
+      worker_nodes:
+        - {name: worker-1.example.com, access_ip_v4: 192.168.1.20}
+        - {name: worker-2.example.com, access_ip_v4: 192.168.1.21}
+    networking:
+      subnet_nodes: 192.168.1.0/24
+      allocation_pool_start: 192.168.1.100
+      allocation_pool_end: 192.168.1.200
+      loadbalancer_provider: metallb
+      dns_zone_name: example.com
+      dns_nameservers: [192.168.1.1]
+      ntp_servers: [pool.ntp.org]
   cluster:
     cluster_name: my-vmware-cluster
     kubernetes:
       version: 1.33.5
-      master_count: 3
-      worker_count: 2
   gitops:
-    git_dir: ./gitops-repo
+    repository:
+      local_dir: ./gitops-repo
 opentofu:
   enabled: false
 secrets:
   vsphere_csi:
     vcenter_host: vcenter.example.com
     username: administrator@vsphere.local
-    password: ""  # Encrypted with SOPS
+    password: "CHANGEME"  # Replace and encrypt with SOPS
     datacenters: Datacenter1
     insecure_flag: "false"
     port: "443"
@@ -171,15 +172,16 @@ secrets:
 
 ### Node Configuration
 
-Each node requires:
+Each pre-provisioned node is represented in `infrastructure.compute.master_nodes` or `worker_nodes` and requires:
 
 ```yaml
-nodes:
-  - name: master-1.example.com    # FQDN or hostname
-    ip: 192.168.1.10              # Static IP address
-    role: master                  # master or worker
-    uuid: ""                      # Optional: VM UUID
-    mac_address: 00:50:56:12:34:56  # Optional: Primary NIC MAC
+opencenter:
+  infrastructure:
+    compute:
+      master_nodes:
+        - name: master-1.example.com    # FQDN or hostname
+          access_ip_v4: 192.168.1.10    # Static IP address used for access
+          id: master-0                  # Optional stable identifier
 ```
 
 Node roles:
@@ -232,7 +234,7 @@ Edit the configuration file to add your pre-provisioned VMs:
 # Configuration stored at:
 # ~/.config/opencenter/clusters/myorg/.my-vmware-cluster-config.yaml
 
-# Edit the vmware.nodes section with your VM details
+# Edit the compute.master_nodes and compute.worker_nodes sections with your VM details
 ```
 
 ### Step 3: Validate Configuration
@@ -250,7 +252,7 @@ opencenter cluster validate my-vmware-cluster
 ### Step 4: Setup GitOps Repository
 
 ```bash
-opencenter cluster generate my-vmware-cluster
+opencenter cluster generate myorg/my-vmware-cluster
 
 # Expected output:
 # ✓ Created GitOps repository structure
@@ -463,5 +465,5 @@ ssh ubuntu@worker-1.example.com "ip addr show ens192"
 
 * [Kubespray Deployment Method](../getting-started/getting-started.md)
 * [vSphere CSI Driver Configuration](../reference/platform-services.md)
-* [Baremetal Provider](README.md) (similar architecture)
+* [Infrastructure Providers](README.md) (provider support boundaries)
 * [Storage Configuration](../reference/platform-services.md)

@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: development-setup
 title: "Development Environment Setup"
 sidebar_label: Development Environment Setup
@@ -14,7 +14,7 @@ tags: [contributing, setup]
 
 ## What you'll build
 
-* A working `opencenter` binary built from source, with version metadata baked in.
+* Working `opencenter` and `opencenter-local` binaries built from source, with version metadata baked into the CLI.
 * A pinned toolchain managed by [mise](https://mise.jdx.dev/).
 * Passing unit and BDD test runs.
 * Optionally, a disposable local Kind cluster to exercise the full `init` -> `validate` -> `generate` -> `deploy` flow.

@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: provider-comparison
 title: "Provider Comparison"
 sidebar_label: Provider Comparison
@@ -17,6 +17,7 @@ tags: [providers, openstack, vmware, kind, baremetal]
 | If you need... | Choose... |
 | --- | --- |
 | Fully automated private-cloud provisioning | OpenStack |
+| Managed Kubernetes on OpenStack | Magnum |
 | Existing vSphere investment and pre-provisioned VMs | VMware |
 | Local development or CI clusters | Kind |
 | Physical hosts you already manage | Baremetal |
@@ -26,13 +27,14 @@ tags: [providers, openstack, vmware, kind, baremetal]
 | Provider | Provisioning | Operational Model | Drift Support | Best Fit |
 | --- | --- | --- | --- | --- |
 | OpenStack | Automated | Cloud-owned infrastructure plus GitOps-managed platform services | Detect + limited reconcile | Production private cloud |
+| Magnum | Managed OpenStack Kubernetes | Magnum owns the cluster lifecycle; the cluster template owns image and network choices | Not currently supported | Existing OpenStack Magnum service |
 | VMware | Pre-provisioned | Infrastructure team owns VM lifecycle; openCenter owns cluster/service lifecycle | Detect only | Existing enterprise virtualization |
 | Kind | Built-in local runtime | Disposable developer cluster | Not applicable | Workstations and CI |
 | Baremetal | Pre-provisioned | Hardware lifecycle outside openCenter | Not applicable | Edge sites and physical estates |
 
 ## Non-GA Infrastructure Providers
 
-AWS is no longer part of the GA infrastructure-provider story. Keep using AWS-backed service integrations where platform services need them, but do not treat AWS as a supported cluster provisioning target.
+AWS, GCP, and Azure are not available cluster-provisioning targets in the current CLI. Their typed configuration blocks and AWS-backed service integrations do not change that boundary.
 
 ## Naming and Compatibility
 

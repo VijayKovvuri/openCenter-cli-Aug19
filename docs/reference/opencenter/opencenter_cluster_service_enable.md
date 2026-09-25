@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: "2026-09-25"
 id: opencenter-cluster-service-enable
 title: "Opencenter_Cluster_Service_Enable"
 sidebar_label: Opencenter_Cluster_Service_Enable
@@ -38,15 +38,15 @@ opencenter cluster service enable <service-name> [flags]
 ### Options
 
 ```
-      --adopt-generated   Claim differing planned files after creating backups during --render
-      --cluster string    Specify the cluster name
-      --force             Force re-enable an already enabled service to re-render configuration
-  -h, --help              help for enable
-      --managed           Enable the service as a managed service
-      --param strings     Set a service parameter (e.g., --param key=value)
-      --prune             Remove stale generated files during --render (default true)
-      --render            Render the service templates immediately after enabling
-      --secret strings    Set a service secret (e.g., --secret key=value)
+      --adopt-generated     Claim differing planned files after creating backups during --render
+      --cluster string      Specify the cluster name
+      --force               Force re-enable an already enabled service to re-render configuration
+  -h, --help                help for enable
+      --managed             Enable the service as a managed service
+      --param stringArray   Set a service parameter (e.g., --param key=value)
+      --prune               Remove stale generated files during --render (default true)
+      --render              Render the service templates immediately after enabling
+      --secret strings      Set a service secret (e.g., --secret key=value)
 ```
 
 ### Options inherited from parent commands

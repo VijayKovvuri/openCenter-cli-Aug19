@@ -1,3 +1,5 @@
+<!-- last_updated: 2026-09-25 -->
+
 # openCenter CLI
 
 openCenter CLI turns a declarative YAML configuration into a Kubernetes cluster and a GitOps repository. It supports OpenStack, VMware, Baremetal, Magnum, and Kind workflows, with configuration validation, secrets management, and FluxCD/Kustomize integration.
@@ -48,7 +50,7 @@ Use the [Documentation Home](docs/index.md) as the canonical index:
 - [Concepts](docs/concepts/) — architecture, GitOps, security, configuration, and provider explanations.
 - [Contributing](docs/contributing/) — development setup, testing, code structure, and project changes.
 
-Service contributors: start with [Adding a Built-in Service](docs/contributing/adding-a-built-in-service.md).
+Service contributors: start with [Adding New Platform Services](docs/contributing/adding-services.md), then follow the focused [Adding a Built-in Service](docs/contributing/adding-a-built-in-service.md) workflow.
 
 Useful starting points include the [configuration schema](docs/reference/configuration-schema.md), [platform services](docs/reference/platform-services.md), [CLI command reference](docs/reference/cli-commands.md), and [file locations](docs/reference/file-locations.md).
 

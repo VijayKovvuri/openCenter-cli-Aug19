@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: vmware-terraform-template
 title: "VMware Terraform Template"
 sidebar_label: VMware Terraform Template
@@ -68,8 +68,8 @@ default:
 
 | Feature | Baremetal Template | VMware Template |
 | --- | --- | --- |
-| Node Source | `Infrastructure.Compute.MasterNodes` | `Infrastructure.Cloud.VMware.Nodes` |
-| Node Filtering | Pre-filtered by role | Filtered in template by `.Role` |
+| Node Source | `Infrastructure.Compute.MasterNodes` | `Infrastructure.Compute.MasterNodes` and `WorkerNodes` |
+| Node Filtering | Pre-filtered by role | Separate `master_nodes` and `worker_nodes` entries |
 | Network Config | Generic | VMware-specific (ens192 default) |
 | vCenter Info | Not included | Datacenter, datastore metadata |
 | Documentation | Minimal | VMware-specific comments |
@@ -84,44 +84,36 @@ locals {
   cluster_name = "{{ .OpenCenter.Cluster.ClusterName }}"
 
   # Network configuration
-  subnet_nodes    = "{{ .OpenCenter.Infrastructure.Cloud.VMware.Network }}"
+  network_name    = "{{ .OpenCenter.Infrastructure.Cloud.VMware.Network }}"
   subnet_pods     = "{{ .OpenCenter.Cluster.Kubernetes.SubnetPods }}"
   subnet_services = "{{ .OpenCenter.Cluster.Kubernetes.SubnetServices }}"
 
   # VMware-specific settings
   address_bastion = "{{ .OpenCenter.Infrastructure.Bastion.Address }}"
-  cni_iface       = "ens192"  # VMware default interface
+  cni_iface       = "ens192"  # Override in network_plugin.calico when needed
 
-  # Node definitions from VMware configuration
-  master_nodes = [
-    # Filtered from .OpenCenter.Infrastructure.Cloud.VMware.Nodes
-    # where .Role == "master"
-  ]
-
-  worker_nodes = [
-    # Filtered from .OpenCenter.Infrastructure.Cloud.VMware.Nodes
-    # where .Role == "worker"
-  ]
+  # Node definitions from the provider-agnostic compute configuration.
+  # VMware uses pre-provisioned static nodes.
+  master_nodes = .OpenCenter.Infrastructure.Compute.MasterNodes
+  worker_nodes = .OpenCenter.Infrastructure.Compute.WorkerNodes
 }
 ```
 
 ### Node Filtering Logic
 
-The template filters nodes by role:
+The configuration separates pre-provisioned nodes by role:
 
 ```go
-{{- range .OpenCenter.Infrastructure.Cloud.VMware.Nodes }}
-{{- if eq .Role "master" }}
+{{- range .OpenCenter.Infrastructure.Compute.MasterNodes }}
   {
     id           = "{{ .Name }}"
     name         = "{{ .Name }}"
-    access_ip_v4 = "{{ .IP }}"
+    access_ip_v4 = "{{ .AccessIPv4 }}"
   },
-{{- end }}
 {{- end }}
 ```
 
-This allows a single `nodes` array in configuration with mixed roles.
+The node lists are provider-agnostic and are also used by baremetal deployments; VMware-specific metadata remains in `cloud.vmware`.
 
 ### Module Invocations
 
@@ -143,14 +135,13 @@ opencenter:
         vcenter_server: vcenter.example.com
         datacenter: Datacenter1
         datastore: datastore1
-        network: 172.26.0.0/24
-        nodes:
-          - name: k8s-qa-ord1-cp0
-            ip: 172.26.0.11
-            role: master
-          - name: k8s-qa-ord1-wn0
-            ip: 172.26.0.14
-            role: worker
+        network: VM Network
+        template: ubuntu-24.04-template
+    compute:
+      master_nodes:
+        - {name: k8s-qa-ord1-cp0, access_ip_v4: 172.26.0.11}
+      worker_nodes:
+        - {name: k8s-qa-ord1-wn0, access_ip_v4: 172.26.0.14}
 ```
 
 ### Generated Terraform
@@ -185,14 +176,18 @@ locals {
 Configuration:
 
 ```yaml
-provider: vmware
-nodes:
-  - {name: k8s-qa-ord1-cp0, ip: 172.26.0.11, role: master}
-  - {name: k8s-qa-ord1-cp1, ip: 172.26.0.12, role: master}
-  - {name: k8s-qa-ord1-cp2, ip: 172.26.0.13, role: master}
-  - {name: k8s-qa-ord1-wn0, ip: 172.26.0.14, role: worker}
-  - {name: k8s-qa-ord1-wn1, ip: 172.26.0.15, role: worker}
-  - {name: k8s-qa-ord1-wn2, ip: 172.26.0.16, role: worker}
+opencenter:
+  infrastructure:
+    provider: vmware
+    compute:
+      master_nodes:
+        - {name: k8s-qa-ord1-cp0, access_ip_v4: 172.26.0.11}
+        - {name: k8s-qa-ord1-cp1, access_ip_v4: 172.26.0.12}
+        - {name: k8s-qa-ord1-cp2, access_ip_v4: 172.26.0.13}
+      worker_nodes:
+        - {name: k8s-qa-ord1-wn0, access_ip_v4: 172.26.0.14}
+        - {name: k8s-qa-ord1-wn1, access_ip_v4: 172.26.0.15}
+        - {name: k8s-qa-ord1-wn2, access_ip_v4: 172.26.0.16}
 ```
 
 Generated:
@@ -207,22 +202,25 @@ Generated:
 Configuration:
 
 ```yaml
-provider: vmware
-nodes:
-  - {name: 3bk8s40, ip: 192.168.12.20, role: master}
-  - {name: 3bk8s41, ip: 192.168.12.21, role: master}
-  - {name: 3bk8s42, ip: 192.168.12.22, role: master}
-  - {name: 3bk8s43, ip: 192.168.12.23, role: worker}
-  - {name: 3bk8s44, ip: 192.168.12.24, role: worker}
-  - {name: 3bk8s45, ip: 192.168.12.25, role: worker}
+opencenter:
+  infrastructure:
+    provider: vmware
+    compute:
+      master_nodes:
+        - {name: 3bk8s40, access_ip_v4: 192.168.12.20}
+        - {name: 3bk8s41, access_ip_v4: 192.168.12.21}
+        - {name: 3bk8s42, access_ip_v4: 192.168.12.22}
+      worker_nodes:
+        - {name: 3bk8s43, access_ip_v4: 192.168.12.23}
+        - {name: 3bk8s44, access_ip_v4: 192.168.12.24}
+        - {name: 3bk8s45, access_ip_v4: 192.168.12.25}
 ```
 
 Generated:
 
 * 3 master nodes (192.168.12.20-22)
 * 3 worker nodes (192.168.12.23-25)
-* VRRP IP: 192.168.12.5
-* Bastion: 192.168.12.26
+* The nodes are pre-provisioned; VMware deployment does not provision a bastion or VIP.
 
 ## VMware-Specific Features
 
@@ -268,15 +266,15 @@ ssh_key_path = "/etc/openCenter/example-platform/secrets/ssh/k8s-qa-svc01m-ord1"
 ### Required Variables
 
 * `OpenCenter.Cluster.ClusterName`
-* `OpenCenter.Infrastructure.Cloud.VMware.Nodes[]`
+* `OpenCenter.Infrastructure.Compute.MasterNodes[]` and `WorkerNodes[]`
   * `.Name` - Node hostname
-  * `.IP` - Node IP address
-  * `.Role` - "master" or "worker"
+  * `.AccessIPv4` - Node IP used for access
 * `OpenCenter.Infrastructure.Bastion.Address`
 
 ### Optional Variables
 
-* `OpenCenter.Infrastructure.Cloud.VMware.Network` - Node subnet (default: 172.26.0.0/24)
+* `OpenCenter.Infrastructure.Cloud.VMware.Network` - VMware network name
+* `OpenCenter.Infrastructure.Cloud.VMware.Template` - Base VM template name
 * `OpenCenter.Infrastructure.K8sAPIIP` - Public API IP (default: VRRP IP)
 * `OpenCenter.Infrastructure.Networking.VRRPIP` - Internal VIP (default: .5 of subnet)
 * `OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.CNIIface` - Network interface (default: ens192)
@@ -287,8 +285,7 @@ The template validates:
 
 * At least one master node exists
 * At least one worker node exists
-* All nodes have name, ip, and role
-* Roles are "master" or "worker"
+* All nodes have `name` and `access_ip_v4`
 
 Validation happens in `internal/core/validation/validators/provider.go`.
 
@@ -336,10 +333,9 @@ If master_nodes or worker_nodes are empty:
 
 ```bash
 # Check node configuration
-yq '.opencenter.infrastructure.cloud.vmware.nodes' config.yaml
+yq '.opencenter.infrastructure.compute' config.yaml
 
-# Verify roles are set correctly
-# Must be exactly "master" or "worker" (case-sensitive)
+# Check name and access_ip_v4 in each static node entry.
 ```
 
 ### Template Rendering Errors
@@ -373,13 +369,13 @@ To migrate existing baremetal clusters to VMware template:
        master_nodes: [...]
        worker_nodes: [...]
 
-   # New (vmware)
-   infrastructure:
-     cloud:
-       vmware:
-         nodes:
-           - {name: master-1, ip: 172.26.0.11, role: master}
-           - {name: worker-1, ip: 172.26.0.14, role: worker}
+    # New (vmware) -- node lists remain under compute.
+    infrastructure:
+      compute:
+        master_nodes:
+          - {name: master-1, access_ip_v4: 172.26.0.11}
+        worker_nodes:
+          - {name: worker-1, access_ip_v4: 172.26.0.14}
    ```
 3. Add VMware metadata (optional):
 
@@ -400,5 +396,4 @@ To migrate existing baremetal clusters to VMware template:
 
 * [VMware Provider Guide](./vmware.md)
 * [VMware Quick Start](./vmware-quick-start.md)
-* [Terraform Templates Overview](vmware.md)
-* [Template Customization](vmware.md)
+* [Infrastructure Providers](README.md)

@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: mise-tasks
 title: "Mise Tasks Reference"
 sidebar_label: Mise Tasks
@@ -71,14 +71,14 @@ tags: [mise, build, tasks, reference]
 | `test:all` | `test`, `test-race`, `vet`, `godog`, `property`, `govulncheck` |
 | `verify` | `test`, `test-race`, `test-properties`, `govulncheck` |
 | `test-remediation-all` | `test-build`, `vet`, `test`, `test-remediation`, `test-race`, `test-remediation-race`, `godog`, `test-docs`, `test-kustomize`, `test-docs-idempotency`, `test-docs-frontmatter-remediation`, `test-diff` |
-| `schema` | `go run ./cmd/schema-gen/main.go --version 2.0 --output schema/cluster.schema.json` |
+| `schema` | `./bin/opencenter cluster schema --pretty --out schema/cluster.schema.json` |
 | `schema-gen` | `go run ./cmd/schema-gen/main.go --version 2.0 --output schema/cluster.schema.json` |
 | `schema-v2` | Writes and runs a throwaway `TestRegenSchema` against `internal/config/v2schema`, writes `schema/opencenter-v2.schema.json`, deletes the test file |
 | `validate` | `./bin/opencenter cluster validate` |
-| `schema-verify` | Build, generate schema, `cluster init`/`update`/`validate` against `OPENCENTER_CONFIG_DIR=./testdata/config`, `mise run test`, `mise run godog` |
+| `schema-verify` | Build, generate schema, `cluster init`/`update`/`validate` against `OPENCENTER_CONFIG_DIR=./testdata/config`, then run `mise run test` and `mise run godog` |
 | `docs-gen` | `go run cmd/docs/generate.go` |
 | `test-docs-idempotency` | Runs `docs-gen` twice, diffs the two results, fails if unstable |
-| `test-docs-frontmatter` | `python3 hack/scripts/audit_doc_frontmatter.py --strict` |
+| `test-docs-frontmatter` | `python3 hack/scripts/audit_doc_frontmatter.py --strict` across maintained Markdown pages |
 | `test-docs-frontmatter-remediation` | Same, with an `--ignore` list of documented legacy pages |
 | `tag-wip-failures` | `python3 hack/tag_wip_failures.py` |
 | `gitea-up` | `go run ./cmd/opencenter-local gitea up` |

@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: validation-rules
 title: "Validation Rules"
 sidebar_label: Validation Rules
@@ -30,7 +30,7 @@ Every load (`internal/config/v2/loader.go`, `LoadFromBytes`) runs a fixed pipeli
 | `services` | Per-service secrets and scheduling-capacity checks. |
 | `connectivity` | Reserved category; not populated by the current offline `ValidateReadiness` checks. |
 
-`ValidateReadiness` runs exactly five checks, in this order: `validateProvider`, `validateNetworkPlugin`, `validateGitOps`, `validateServiceSchedulingCapacity`, `validateServiceSecrets`.
+`ValidateReadiness` runs seven checks, in this order: `validateProvider`, `validateNetworkPlugin`, `validateGitOps`, `validateServiceSchedulingCapacity`, `validateStorageProfile`, `validateServiceSecrets`, and `validateS3Buckets`.
 
 ### Provider rules
 
@@ -38,7 +38,7 @@ Every load (`internal/config/v2/loader.go`, `LoadFromBytes`) runs a fixed pipeli
 
 - **openstack** — `cloud.openstack` block required; `auth_url` required and must be an absolute URL (HTTP triggers a warning, not an error); `region`, `project_id`, `image_id` required and must not be placeholder values; `application_credential_id`/`application_credential_secret` must both be set or both be empty, and (for readiness purposes) both are actually required; `compute.flavor_master`/`flavor_worker`/`flavor_worker_windows`/`flavor_bastion` are required whenever the corresponding count is `> 0` or bastion is enabled; each `additional_server_pools_worker[]` entry with `count > 0` needs a flavor; having any of `cloud.aws`/`cloud.gcp`/`cloud.azure`/`cloud.vmware` populated alongside `cloud.openstack` is an error.
 - **magnum** — same shape as openstack: `cloud.magnum` required; `auth_url` (HTTP(S) only, no embedded userinfo), `region`, `project_id`, `cluster_template` required; `application_credential_id`/`application_credential_secret` both required and must be set together; other provider `cloud.*` sections must be absent. See `internal/cloud/magnum/provider.go` and [Adding New Infrastructure Providers](../contributing/adding-providers.md) — magnum is the newest provider and the closest current worked example of this rule shape.
-- **baremetal**, **vmware**, **kind**, **aws**, **gcp**, **azure** — each has its own `validate<Provider>Provider` function in `internal/config/v2/readiness.go` with analogous required-field and cross-provider-section checks; read that file directly for the exact field list of a provider not covered above.
+- **baremetal**, **vmware**, **kind**, **aws**, **gcp**, **azure** — each has its own `validate<Provider>Provider` function in `internal/config/v2/readiness.go` with provider-specific required-field and cross-provider-section checks; read that file directly for the exact field list. AWS, GCP, and Azure readiness rules do not override the CLI availability gate that rejects those providers as planned.
 
 ### Network plugin rule
 

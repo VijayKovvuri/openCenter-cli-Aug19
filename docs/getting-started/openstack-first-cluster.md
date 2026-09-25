@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: openstack-first-cluster
 title: "Deploy Your First Production Cluster on OpenStack"
 sidebar_label: Deploy Your First
@@ -106,33 +106,33 @@ Update the OpenStack section:
 opencenter:
   infrastructure:
     provider: openstack
-    openstack:
-      # Your OpenStack region
-      region: sjc3
+    cloud:
+      openstack:
+        # Your OpenStack region
+        region: sjc3
 
-      # Your OpenStack credentials
-      auth_url: "https://identity.api.rackspacecloud.com/v3"
-      username: "your-username"
-      password: "your-password"  # Will be encrypted with SOPS
-      project_name: "your-project"
-      project_domain: "rackspace_cloud_domain"
-      user_domain: "rackspace_cloud_domain"
+        # The v2 runtime uses application credentials.
+        auth_url: "https://identity.api.rackspacecloud.com/v3"
+        project_id: "your-project-id"
+        application_credential_id: "your-app-credential-id"
+        application_credential_secret: "your-app-credential-secret"
+        project_name: "your-project-name"
+        project_domain_name: "Default"
+        user_domain_name: "Default"
 
-      # Availability zone
-      availability_zone: az1
+        # Availability zone
+        availability_zone: az1
 
-      # Ubuntu 24.04 image ID (verify this exists in your region)
-      image_id: "799dcf97-3656-4361-8187-13ab1b295e33"
+        # Ubuntu 24.04 image ID (verify this exists in your region)
+        image_id: "your-image-id"
 
-      # Floating IP pool for external access
-      floating_ip_pool: "PUBLICNET"
+        # Replace all example and placeholder values before validation.
+        floating_network_id: "your-floating-network-id"
 
-      # Network configuration
-      network_name: "prod-cluster-network"
-      subnet_cidr: "10.2.128.0/22"
-      dns_nameservers:
-        - "8.8.8.8"
-        - "8.8.4.4"
+        # Network configuration
+        network_id: "your-network-id"
+        subnet_id: "your-subnet-id"
+        router_external_network_id: "your-external-network-id"
 ```
 
 **Finding your image ID:**
@@ -627,7 +627,7 @@ This tutorial is based on:
 
 * OpenStack defaults: `internal/config/defaults.go:68-157`
 * Workflow validation: `tests/features/workflow.feature:1-73`
-* Provider documentation: `docs/providers/README.md:7`
+* Provider documentation: [Infrastructure Providers](../providers/README.md) and [Infrastructure Providers Reference](../reference/providers.md)
 * Bootstrap process: `cmd/cluster_bootstrap.go`
 * GitOps structure: `internal/gitops/`, Ecosystem.md
 * Service configuration: `internal/config/defaults.go:293-388`

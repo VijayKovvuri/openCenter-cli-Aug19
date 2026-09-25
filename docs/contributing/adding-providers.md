@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: adding-providers
 title: "Adding New Infrastructure Providers"
 sidebar_label: Adding New Infrastructure
@@ -68,7 +68,7 @@ A self-contained Gophercloud client, independent of the rest of this repository'
 
 ### 6. Provider availability gate (`cmd/provider_availability.go`)
 
-`checkProviderAvailability` only rejects providers in a hardcoded `planned` map (`aws`, `gcp`, `azure` today) with a "not yet available" error. A new provider works as soon as it is **not** in that map -- you do not need to add anything here for the provider to function. You should, however, update the error message's "Supported providers: ..." list if you want it to stay accurate; it currently reads `openstack, vmware, kind, baremetal` and does not mention `magnum`, which is a real, if harmless, drift in this repository today.
+`checkProviderAvailability` only rejects providers in a hardcoded `planned` map (`aws`, `gcp`, `azure` today) with a "not yet available" error. Removing a provider from that map is not sufficient to make it work: the provider also needs config validation, lifecycle dispatch, and any required orchestration or client implementation. The error message's literal supported-provider list currently omits `magnum`; treat that string as a maintenance item, not as the authoritative capability registry. The actual lifecycle and drift boundaries are documented in [Providers Reference](../reference/providers.md).
 
 ## Checklist for a new provider
 

@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: vmware-deployment
 title: "Deploy Kubernetes on VMware vSphere"
 sidebar_label: Deploy Kubernetes on
@@ -242,36 +242,32 @@ Update the VMware section:
 opencenter:
   infrastructure:
     provider: vmware
-    vmware:
-      # vSphere credentials (for CSI driver)
-      vcenter_server: "vcenter.example.com"
-      username: "administrator@vsphere.local"
-      password: "your-password"  # Will be encrypted with SOPS
-      datacenter: "DC1"
-      datastore: "datastore1"
+    cloud:
+      vmware:
+        # These are infrastructure selectors, not credentials.
+        vcenter_server: "vcenter.example.com"
+        datacenter: "DC1"
+        datastore: "datastore1"
+        network: "VM Network"
+        template: "ubuntu-24.04-template"
 
-      # VM inventory (pre-provisioned VMs)
-      masters:
-        - hostname: prod-cluster-master-1
-          ip: 192.168.1.10
-          ssh_user: ubuntu
-        - hostname: prod-cluster-master-2
-          ip: 192.168.1.11
-          ssh_user: ubuntu
-        - hostname: prod-cluster-master-3
-          ip: 192.168.1.12
-          ssh_user: ubuntu
+    compute:
+      # Pre-provisioned nodes are static compute entries.
+      master_nodes:
+        - {name: prod-cluster-master-1, access_ip_v4: 192.168.1.10}
+        - {name: prod-cluster-master-2, access_ip_v4: 192.168.1.11}
+        - {name: prod-cluster-master-3, access_ip_v4: 192.168.1.12}
+      worker_nodes:
+        - {name: prod-cluster-worker-1, access_ip_v4: 192.168.1.20}
+        - {name: prod-cluster-worker-2, access_ip_v4: 192.168.1.21}
+        - {name: prod-cluster-worker-3, access_ip_v4: 192.168.1.22}
 
-      workers:
-        - hostname: prod-cluster-worker-1
-          ip: 192.168.1.20
-          ssh_user: ubuntu
-        - hostname: prod-cluster-worker-2
-          ip: 192.168.1.21
-          ssh_user: ubuntu
-        - hostname: prod-cluster-worker-3
-          ip: 192.168.1.22
-          ssh_user: ubuntu
+secrets:
+  vsphere_csi:
+    vcenter_host: "vcenter.example.com"
+    username: "administrator@vsphere.local"
+    password: "CHANGEME"
+    datacenters: "DC1"
 ```
 
 ## Step 4: Configure Cluster Settings
@@ -756,7 +752,7 @@ You now have a production-ready Kubernetes cluster on VMware vSphere with GitOps
 
 This tutorial is based on:
 
-* VMware provider: `docs/providers/README.md:8`
+* VMware provider: [Infrastructure Providers](../providers/README.md) and [VMware Provider Guide](../providers/vmware.md)
 * VMware defaults: `internal/config/defaults.go:27-31`
 * Workflow validation: `tests/features/workflow.feature:1-73`
 * Bootstrap process: `cmd/cluster_bootstrap.go`

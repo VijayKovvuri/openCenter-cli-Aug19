@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: glossary
 title: "Glossary"
 sidebar_label: Glossary
@@ -47,7 +47,7 @@ Standard for configuring network interfaces in Linux containers. Kubernetes uses
 * ***Cobra***\
 Go library for building CLI applications. openCenter uses Cobra for command structure and flag parsing.
 * ***Control Plane***\
-Kubernetes components that manage the cluster (API server, scheduler, controller manager, etcd). openCenter deploys 3 control plane nodes for high availability.
+Kubernetes components that manage the cluster (API server, scheduler, controller manager, etcd). The default is provider/path dependent: non-Kind defaults use three, Kind uses one, and Kamaji hosts the control plane rather than requiring `master_count` nodes.
 
 ## D
 
@@ -84,7 +84,7 @@ FluxCD custom resource that deploys Helm charts. openCenter generates HelmReleas
 * ***Kind (Kubernetes in Docker)***\
 Tool for running local Kubernetes clusters using Docker containers. Used for development and testing.
 * ***Kubespray***\
-Ansible playbooks for deploying production-ready Kubernetes clusters. openCenter uses Kubespray for cluster provisioning.
+Ansible playbooks for deploying production-ready Kubernetes clusters. For the shared infrastructure path, the generated OpenTofu module invokes Kubespray through a `local-exec` provisioner during `opentofu-apply`; it is not a separate live CLI bootstrap step.
 * ***Kustomize***\
 Kubernetes configuration management tool using overlays. openCenter uses Kustomize for cluster-specific customization.
 * ***Kustomization***\
@@ -102,7 +102,7 @@ Tool version manager and task runner. openCenter uses Mise for managing Go, kube
 * ***Octavia***\
 OpenStack load balancer service. When disabled, openCenter uses VRRP for control plane high availability.
 * ***OpenTofu***\
-Open-source Terraform fork. openCenter supports both Terraform and OpenTofu for infrastructure provisioning.
+Open-source Terraform fork. The shared infrastructure bootstrap prefers the configured OpenTofu binary and falls back to `terraform` when OpenTofu is unavailable.
 * ***Overlay***\
 Kustomize pattern for customizing base manifests. openCenter uses overlays for cluster-specific configuration.
 
@@ -146,7 +146,7 @@ VMware virtualization platform. openCenter supports deploying clusters on vSpher
 ## W
 
 * ***Worker Node***\
-Kubernetes node that runs application workloads. openCenter deploys 2+ worker nodes by default.
+Kubernetes node that runs application workloads. Defaults are provider/path dependent: non-Kind defaults use three, while Kind uses two; Kamaji worker pools are configured separately.
 
 ---
 

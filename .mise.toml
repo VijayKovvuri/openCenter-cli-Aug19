@@ -5,6 +5,7 @@ kubectl = "latest"
 kind = "latest"
 helm = "latest"
 sops = "3.13.3"
+pre-commit = "latest"
 "go:golang.org/x/vuln/cmd/govulncheck" = "latest"
 "aqua:gitleaks/gitleaks" = "latest"
 
@@ -713,18 +714,17 @@ install-shell-integration = "./hack/install-shell-integration.sh"
 # Install git hooks for development
 install-hooks = '''
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 echo "Installing git hooks for opencenter development..."
-mkdir -p .git/hooks
-
-if [ ! -f .git/hooks/pre-commit ]; then
-    echo "ERROR: Pre-commit hook not found in repository"
+if ! command -v pre-commit >/dev/null 2>&1; then
+    echo "ERROR: pre-commit is not installed; run 'mise install' first" >&2
     exit 1
 fi
 
-chmod +x .git/hooks/pre-commit
-echo "Git hooks installed. Pre-commit hook validates SOPS encryption of cluster config secrets."
+pre-commit install --config .pre-commit-config.yaml --hook-type pre-commit
+echo "Git hooks installed from the tracked .pre-commit-config.yaml."
+echo "The hook runs gitleaks and requires maintained docs for public behavior changes."
 '''
 
 # ---------------------------------------------------------------------------

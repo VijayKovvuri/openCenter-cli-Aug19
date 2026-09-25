@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: release-process
 title: "Release Process"
 sidebar_label: Release Process
@@ -17,7 +17,7 @@ tags: [contributing, release]
 ## Prerequisites
 
 * Maintainer access to the repository (the workflow needs `contents: write` and `id-token: write`, which come from the repository's default `GITHUB_TOKEN` -- no extra secrets to configure for signing, since cosign runs keyless).
-* `gh` CLI installed, for watching the run and inspecting the resulting release (optional).
+* `gh` CLI installed on the release runner; it is used by the workflow to create the release. Maintainers can also use it to watch the run and inspect the result.
 * All required CI checks green on `main` (see [Testing Guide](testing-guide.md) and [GitHub Actions Workflows](../reference/github-actions-workflows.md)).
 
 ## Versioning
@@ -32,7 +32,7 @@ Before tagging, you can build and inspect the release artifacts locally without 
 mise run release v1.2.0
 ```
 
-This cross-compiles four `dist/opencenter-1.2.0-<os>-<arch>` binaries into `bin/release/`, writes `bin/release/RELEASE_NOTES_1.2.0.md` (grouped from `git log <last-tag>..HEAD --oneline --no-merges` by `feat`/`fix`/`docs` subject prefix), and prints the manual tag/push/`gh release create` commands as a reminder. Nothing is pushed or published by this task.
+This cross-compiles four `bin/release/opencenter-1.2.0-<os>-<arch>` binaries, writes `bin/release/RELEASE_NOTES_1.2.0.md` (grouped from `git log <last-tag>..HEAD --oneline --no-merges` by `feat`/`fix`/`docs` subject prefix), and prints the manual tag/push/`gh release create` commands as a reminder. Nothing is pushed or published by this task.
 
 ## Step 2: Verify tests pass
 
@@ -56,9 +56,9 @@ Pushing a `v*` tag triggers `.github/workflows/release.yml`. A manual `workflow_
 
 1. **`build-cli`** -- matrix over `{linux/amd64, linux/arm64, darwin/amd64, darwin/arm64}`, self-hosted runners. Builds `dist/opencenter-<version>-<os>-<arch>` with full `-ldflags` version metadata (version is the tag with its leading `v` stripped). Uploads each as an artifact.
 2. **`build-plugin`** -- same matrix, builds `./cmd/opencenter-local` -> `dist/opencenter-local-<version>-<os>-<arch>` (no ldflags). Uploads each as an artifact.
-3. **`release`** (needs both build jobs) -- downloads all artifacts into `dist/`, computes `sha256sum opencenter-* | sort > checksums.txt`, installs `sigstore/cosign-installer`, runs `cosign sign-blob --yes --bundle <artifact>.bundle <artifact>` (keyless signing, `COSIGN_YES=true`) for every artifact and for `checksums.txt`, installs `syft` and generates `dist/opencenter.spdx.json`, then runs `gh release create "$GITHUB_REF_NAME" dist/* --generate-notes` using the workflow's own `GITHUB_TOKEN`.
+3. **`release`** (needs both build jobs) -- downloads all artifacts into `dist/`, computes `sha256sum opencenter-* | sort > checksums.txt`, installs `sigstore/cosign-installer`, keylessly signs each `opencenter-*` artifact and `checksums.txt` with a `.bundle`, installs `syft` and generates `dist/opencenter.spdx.json`, then runs `gh release create "$GITHUB_REF_NAME" dist/* --generate-notes` using the workflow's own `GITHUB_TOKEN`. The SBOM is generated after signing and is not itself signed.
 
-The resulting GitHub release contains: 4 CLI binaries, 4 `opencenter-local` plugin binaries, `checksums.txt`, a `.bundle` cosign signature next to every signed file, and `opencenter.spdx.json`. The workflow does not build or push a container image.
+The resulting GitHub release contains: 4 CLI binaries, 4 `opencenter-local` plugin binaries, `checksums.txt`, `.bundle` cosign signatures for the eight binaries and checksum file, and `opencenter.spdx.json`. The workflow does not build or push a container image.
 
 ## Step 5: Watch the run
 

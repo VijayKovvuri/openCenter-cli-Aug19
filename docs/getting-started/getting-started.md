@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: getting-started
 title: "Getting Started with openCenter"
 sidebar_label: Getting Started with openCenter
@@ -12,7 +12,7 @@ tags: [getting-started, tutorial, installation, first-cluster]
 
 **Purpose:** For new users, shows how to create your first Kubernetes cluster using openCenter, covering installation through deployment.
 
-This tutorial walks you through creating your first Kubernetes cluster with openCenter. You’ll learn the core workflow: initialize, validate, setup, and bootstrap. By the end, you’ll have a working cluster and understand how to manage it.
+This tutorial walks you through creating your first Kubernetes cluster with openCenter. You’ll learn the core workflow: initialize, validate, generate, and deploy. By the end, you’ll have a working cluster and understand how to manage it.
 
 ## What You’ll Build
 
@@ -48,7 +48,7 @@ Before starting, ensure you have:
    * OpenStack cloud credentials (recommended for production)
    * Kind installed (for local development)
    * VMware vSphere with pre-provisioned VMs
-   * AWS credentials (experimental)
+   * Baremetal hosts or Magnum access (provider-specific workflows)
 4. **_SSH key_** - For cluster access
 
    ```bash
@@ -86,7 +86,7 @@ Create a new cluster configuration with sensible defaults:
 ./bin/opencenter cluster init demo --org my-org
 
 # The configuration is created at:
-# ~/.config/opencenter/clusters/my-org/.demo-config.yaml
+# ~/.config/opencenter/clusters/my-org/infrastructure/clusters/demo/.demo-config.yaml
 ```
 
 The `init` command creates a complete configuration file with:
@@ -95,7 +95,7 @@ The `init` command creates a complete configuration file with:
 * 3 control plane nodes, 2 worker nodes
 * Calico CNI networking
 * 20+ platform services enabled
-* OpenStack as default provider
+* OpenStack as the default provider
 
 ## Step 3: Configure Your Cluster
 
@@ -103,12 +103,12 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open configuration in your editor
-$EDITOR ~/.config/opencenter/clusters/my-org/.demo-config.yaml
+$EDITOR ~/.config/opencenter/clusters/my-org/infrastructure/clusters/demo/.demo-config.yaml
 ```
 
 <mark>#</mark> Minimum Required Configuration
 
-For OpenStack, you must set:
+For OpenStack, replace the generated placeholders in `cloud.openstack` before deployment. The current v2 readiness checks require application credentials, even when older examples show username/password fields:
 
 ```yaml
 opencenter:
@@ -116,18 +116,14 @@ opencenter:
     provider: openstack
     cloud:
       openstack:
-        auth_url: "https://identity.api.rackspacecloud.com/v3"
-        region: "sjc3"
+        auth_url: "https://keystone.example.com/v3"
+        region: "RegionOne"
+        project_id: "your-project-id"
         application_credential_id: "your-app-cred-id"
         application_credential_secret: "your-app-cred-secret"
-        domain: "Default"
-        floating_network_id: "your-floating-network-id"
-
-secrets:
-  global:
-    openstack:
-      application_credential_id: "your-app-cred-id"
-      application_credential_secret: "your-app-cred-secret"
+        image_id: "your-image-id"
+        network_id: "your-network-id"
+        subnet_id: "your-subnet-id"
 ```
 
 For Kind (local development):
@@ -153,7 +149,7 @@ opencenter:
       enabled: true  # Log aggregation
 ```
 
-See [Platform Services Reference](../reference/platform-services.md) for complete list.
+Do not leave `CHANGEME`, `*-placeholder`, or `your-*` values in a deployable configuration. See [Platform Services Reference](../reference/platform-services.md) for the complete service list.
 
 ## Step 4: Select Your Cluster
 
@@ -238,7 +234,7 @@ This creates:
         └── kubeconfig.yaml        # Cluster access (generated later)
 ```
 
-The `--render` flag materializes templates with your configuration values.
+Use `--render-only` when you need to render templates without the full repository setup flow. The normal `cluster generate` command creates or updates the GitOps repository and rendered manifests.
 
 ## Step 7: Initialize Git Repository
 
@@ -268,7 +264,7 @@ Deploy the cluster:
 
 This command:
 
-1. **_Provisions infrastructure_** - Creates VMs, networks, load balancers (OpenStack/AWS)
+1. **_Provisions infrastructure_** - Creates infrastructure for providers that own provisioning (for example, OpenStack); Kind and pre-provisioned providers follow different flows
 2. **_Deploys Kubernetes_** - Runs Kubespray Ansible playbooks
 3. **_Bootstraps FluxCD_** - Installs GitOps controller
 4. **_Deploys services_** - FluxCD reconciles platform services from gitops-base

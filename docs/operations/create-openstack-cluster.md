@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: create-openstack-cluster
 title: "Create an OpenStack Cluster"
 sidebar_label: Create an OpenStack Cluster
@@ -50,7 +50,7 @@ openstack network list --external
 
 openCenter supports two ways to configure an OpenStack cluster:
 
-* **Guided** (`cluster configure --guided`): An interactive workflow that discovers your OpenStack resources (images, flavors, networks, availability zones) and walks you through each required field with prompts and validation. This is the recommended path for new clusters.
+* **Guided** (`cluster configure`): An interactive workflow that discovers your OpenStack resources (images, flavors, networks, availability zones) and walks you through each required field with prompts and validation. This is the recommended path for new clusters.
 * **Manual** (`cluster init` + `cluster edit`): Creates a config with placeholder defaults, then you edit the YAML by hand. Useful when you already know all the values or want to script the process.
 
 Both paths produce the same v2 configuration file. You can start with guided mode and refine with `cluster edit` afterward.
@@ -130,7 +130,7 @@ You have two options here. Choose one.
 The guided workflow creates the cluster config, authenticates to OpenStack, discovers available resources, and walks you through every required field interactively:
 
 ```bash
-opencenter cluster configure prod-cluster --guided --org my-company --type openstack
+opencenter cluster configure prod-cluster --org my-company --type openstack
 ```
 
 The guided flow runs in phases:
@@ -150,7 +150,7 @@ If the cluster already exists, guided mode loads the existing config and only pr
 
 ```bash
 # Re-run guided mode on an existing cluster to fill in remaining fields
-opencenter cluster configure my-company/prod-cluster --guided
+opencenter cluster configure my-company/prod-cluster
 ```
 
 #### Option B: Manual initialization
@@ -202,7 +202,7 @@ opencenter cluster describe my-company/prod-cluster
 
 ### 2. Set OpenStack, GitOps, and cluster identity values (manual path only)
 
-Skip this step if you used `cluster configure --guided` -- the guided flow already collected these values.
+Skip this step if you used `cluster configure` -- the guided flow already collected these values.
 
 Open the generated config:
 
@@ -582,7 +582,7 @@ Keep these fields synchronized:
 * top-level OpenStack `network_id` / `subnet_id`
 * nested `openstack.networking.network_id` / `openstack.networking.subnet_id`
 
-The guided configure flow (`cluster configure --guided`) keeps these fields in sync automatically. If you edit the config manually, you need to update both locations.
+The guided configure flow (`cluster configure`) keeps these fields in sync automatically. If you edit the config manually, you need to update both locations.
 
 ### Bootstrap fails during `opentofu-apply`
 

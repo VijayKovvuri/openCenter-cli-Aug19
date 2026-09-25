@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: openstack-cluster-via-cli
 title: "Create and Deploy an OpenStack Cluster with the CLI"
 sidebar_label: OpenStack Cluster via CLI
@@ -14,12 +14,14 @@ tags: [openstack, cluster, cli, provider, storage, gitops]
 
 ## Prerequisites
 
-- Go installed and the CLI built from source:
+- mise installed, plus a Go toolchain managed by the repository's `.mise.toml`:
   ```bash
   git clone https://github.com/opencenter-cloud/opencenter-cli.git
   cd opencenter-cli
-  go build -o opencenter .
+  mise install
+  mise run build
   ```
+- The build produces `bin/opencenter` and `bin/opencenter-local`. The OpenStack bootstrap also needs a `tofu`/`opentofu` binary, or `terraform` as the source fallback, on `PATH` (or configured through `opentofu.path`).
 - A selected `clouds.yaml` profile for the target OpenStack project. Provider discovery uses authenticated read operations, so an application-credential profile can be used. Storage apply additionally requires permission to ensure the object-store container and create the credential type required by the selected backend.
 - An empty Git repository for the cluster's GitOps configuration and a GitHub token with write access if you use token authentication. The optional helper below can create a disposable private GitHub repository and SSH deploy key instead.
 - `kubectl`, and `flux` if you will perform the post-deploy checks.

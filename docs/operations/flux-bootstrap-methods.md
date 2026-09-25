@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: flux-bootstrap-methods
 title: "Configure Flux Bootstrap Authentication"
 sidebar_label: Configure Flux Bootstrap
@@ -127,7 +127,7 @@ opencenter:
 To open the guided configuration workflow:
 
 ```bash
-opencenter cluster configure my-org/my-cluster --guided
+opencenter cluster configure my-org/my-cluster
 ```
 
 ### Step 4: Bootstrap with SSH
@@ -235,7 +235,7 @@ Set either `token` or `token_file: "~/.config/opencenter/clusters/my-org/secrets
 To open the guided configuration workflow:
 
 ```bash
-opencenter cluster configure my-org/my-cluster --guided
+opencenter cluster configure my-org/my-cluster
 ```
 
 ### Step 4: Bootstrap with Token

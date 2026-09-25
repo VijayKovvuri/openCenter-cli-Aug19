@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: testing-guide
 title: "Testing Guide"
 sidebar_label: Testing Guide
@@ -207,13 +207,13 @@ dlv test ./internal/config -- -test.run TestValidateClusterName
 
 CI coverage is defined entirely by `.github/workflows/*.yml`; see [GitHub Actions Workflows](../reference/github-actions-workflows.md) for the complete, verified breakdown of triggers, jobs, and steps. In short:
 
-* `test.yml` runs on pull requests and pushes to `main`: a `go-test` job (`mise run test`, `mise run test-race`, `go vet ./...`) and an independent `property-tests` job.
+* `test.yml` runs on pull requests and pushes to `main`: a `go-test` job that directly runs `go test ./internal/... ./cmd/... -count=1 -race` and `go vet ./...`, plus an independent `property-tests` job using the same package scope and `-run 'TestProperty'`.
 * `pre-commit.yaml` runs the pre-commit hook set for changed files on every pull request.
 * `vulncheck.yml` runs `govulncheck ./...` on pull requests, on a weekly schedule, and on manual dispatch.
-* `docs-p0.yml` runs for pull requests that touch Markdown files.
+* `docs-p0.yml` runs for pull requests that touch Markdown files; it audits the changed files with `audit_doc_frontmatter.py --strict` and runs Vale.
 * `deploy-kind.yml` is a manually dispatched, disposable Kind + Gitea end-to-end workflow -- it is not a per-commit gate.
 
-CI does **not** run the BDD suite, the `integration` task, the documentation-generator tests, or `mise run test:all`. Run those locally before opening a PR when your change touches the relevant area:
+CI does **not** run the BDD suite, the `integration` task, the documentation-generator tests, the Kustomize check, or `mise run test:all`. Run those locally before opening a PR when your change touches the relevant area:
 
 ```bash
 mise run godog
