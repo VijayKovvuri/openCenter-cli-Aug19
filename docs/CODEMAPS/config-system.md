@@ -76,6 +76,7 @@ Shared validation belongs to `internal/core/validation`.
 
 ## Related maps
 
+- When adding a service, update its typed registration/default shape and run the schema regeneration described in [Adding a built-in service](../contributing/adding-a-built-in-service.md#1-add-the-configuration-contract).
 - [Cluster lifecycle](cluster-lifecycle.md) — config as lifecycle input
 - [OpenStack provider and storage operations](openstack-provider-storage-operations.md) — typed provider persistence and storage recovery boundary
 - [Rendering ownership and secret artifacts](rendering-ownership-and-secret-artifacts.md) — config ownership at render time

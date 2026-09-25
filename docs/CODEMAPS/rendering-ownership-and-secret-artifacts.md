@@ -73,6 +73,7 @@ This boundary is important for changes: a new renderer must first declare owners
 
 ## Related maps
 
+- New-service checklist: choose a catalog entry or descriptor, keep templates inside declared roots, and verify secret artifacts do not enter generator ownership; see [Adding a built-in service](../contributing/adding-a-built-in-service.md#3-choose-rendering-ownership).
 - [GitOps engine](gitops-engine.md) — generation entry point and workspace lifecycle
 - [Secrets management](secrets-management.md) — transactional encrypted manifest sync
 - [Config system](config-system.md) — service and secret input model

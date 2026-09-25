@@ -80,6 +80,7 @@ Command implementations remain in `cmd/`; domain behavior belongs in `internal/*
 
 ## Related maps
 
+- Add a service-storage command mapping only when the service needs object-storage provisioning; follow the [built-in service checklist](../contributing/adding-a-built-in-service.md#5-add-object-storage-support-only-when-needed) and regenerate command references when the tree changes.
 - [DI container](di-container.md) — graph construction and command context
 - [OpenStack provider and storage operations](openstack-provider-storage-operations.md) — typed provider planning and explicit one-service storage provisioning
 - [Cluster lifecycle](cluster-lifecycle.md) — command-to-service workflow

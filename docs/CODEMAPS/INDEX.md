@@ -47,6 +47,8 @@ The renderer plans descriptor-owned and catalog-owned actions, validates output 
 | [Runtime extensions and local development](runtime-extensions-and-local-development.md) | External plugins, `opencenter-local`, templates, security boundary | You need extension or local workflow behavior |
 | [Import, operations, and resilience](import-operations-and-resilience.md) | Import scan/apply/report, drift, backup, locks, retries, circuits | You need operational recovery or import behavior |
 
+For the implementation sequence behind a new built-in service, see [Adding a built-in service](../contributing/adding-a-built-in-service.md).
+
 ## Directory ownership
 
 | Directory | Responsibility | Related map |

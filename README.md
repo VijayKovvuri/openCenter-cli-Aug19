@@ -48,6 +48,8 @@ Use the [Documentation Home](docs/index.md) as the canonical index:
 - [Concepts](docs/concepts/) — architecture, GitOps, security, configuration, and provider explanations.
 - [Contributing](docs/contributing/) — development setup, testing, code structure, and project changes.
 
+Service contributors: start with [Adding a Built-in Service](docs/contributing/adding-a-built-in-service.md).
+
 Useful starting points include the [configuration schema](docs/reference/configuration-schema.md), [platform services](docs/reference/platform-services.md), [CLI command reference](docs/reference/cli-commands.md), and [file locations](docs/reference/file-locations.md).
 
 ## Development

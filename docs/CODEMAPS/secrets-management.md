@@ -77,6 +77,7 @@ Backend-oriented commands (`login`, `list`, `describe`, `get`, `set`, `delete`) 
 
 ## Related maps
 
+- When adding a service, trace its logical secret requirements through artifact planning, SOPS file selection, and ownership state using [Adding a built-in service](../contributing/adding-a-built-in-service.md#4-wire-secrets-and-ownership).
 - [Rendering ownership and secret artifacts](rendering-ownership-and-secret-artifacts.md) — planner/renderer contract
 - [OpenStack provider and storage operations](openstack-provider-storage-operations.md) — provider and storage credential boundary
 - [GitOps engine](gitops-engine.md) — overlay encryption during generation
