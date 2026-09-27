@@ -16,23 +16,15 @@ openCenter CLI is a Go command-line application for managing declarative Kuberne
 
 This page is the terse, source-grounded entry point for contributors and code-oriented agents: package boundaries, dependency direction, and runtime wiring. For a narrative, design-rationale-oriented explanation aimed at architects and operators (why GitOps, why layered validation, provider trade-offs), see [Architecture (concepts)](concepts/architecture.md). For a package-by-package breakdown of each subsystem, see the [CODEMAPS index](CODEMAPS/INDEX.md).
 
-The architecture is layered around a thin command surface, an explicit application graph, domain packages, and focused infrastructure packages:
-
-```mermaid
-flowchart TD
-    Entry["Executable entrypoints"] --> Command["cmd: Cobra commands and user interaction"]
-    Command --> App["internal/di: typed application graph"]
-    Command --> Domain["Cluster, GitOps, secrets, operations, and local development"]
-    App --> Domain
-    Domain --> Foundation["Configuration, paths, validation, templates, filesystems, and clients"]
-    Foundation --> External["Cloud APIs, Git, SOPS and age, Kubernetes tooling, and external plugins"]
-```
-
-Dependencies should follow the arrows. Lower-level packages must not import `cmd`, and domain packages must not depend on executable wiring.
+The architecture is layered around a thin command surface, an explicit application graph, domain packages, and focused infrastructure packages. The
+runtime dependency direction is described below; it is intentionally not a
+claim that every package imports every package in the same layer. Lower-level
+packages must not import `cmd`, and domain packages must not depend on
+executable wiring.
 
 ## Contributor navigation
 
-Start at the executable entrypoint that owns the behavior: `main.go` for process setup, `cmd/root.go` for the production Cobra graph, `cmd/opencenter-local/main.go` for local development, `cmd/docs/generate.go` for generated command pages, or `hack/generate_relaypoint_fixture_configs.go` for fixture configuration. From a command constructor, follow the service call into `internal`; do not infer ownership from filenames alone.
+Start at the executable entrypoint that owns the behavior: `main.go` for process setup, `cmd/root.go` for the production Cobra graph, `cmd/opencenter-local/main.go` for local development, `cmd/docs/generate.go` for generated built-in command pages, or `hack/generate_relaypoint_fixture_configs.go` for fixture configuration. From a command constructor, follow the service call into `internal`; do not infer ownership from filenames alone.
 
 For a package-level deep dive, use the [CODEMAPS index](CODEMAPS/INDEX.md). When changing serialized configuration, generated output, plugins, embedded assets, or reflected wiring, search the corresponding string- and runtime-based references before removing or renaming code. These surfaces are compatibility boundaries even when static call-graph analysis cannot see them.
 
@@ -55,7 +47,7 @@ The command layer owns argument parsing, prompts, presentation, exit behavior, a
 | Package | Responsibility |
 | --- | --- |
 | `cmd` | Cobra command definitions, root wiring, user interaction, output selection, and external command plugin attachment. |
-| `internal/di` | Construction of the typed `App` dependency graph and compatibility access through the legacy container interface. |
+| `internal/di` | Construction of the typed `App` graph for the current CLI path, plus a compatibility adapter and a separate, partial legacy container setup. |
 | `internal/config/v2` | Authoritative typed configuration model, loading, normalization, references, defaults, validation, and persistence coordination. |
 | `internal/core/paths` | Low-level path resolution and repository filesystem layout. |
 | `internal/core/validation` | Reusable validation engine and focused validators. |
@@ -65,14 +57,14 @@ The command layer owns argument parsing, prompts, presentation, exit behavior, a
 | `internal/cloud` | Drift-provider interface/factory and shared provider-facing infrastructure types; lifecycle deploy providers are wired separately. |
 | `internal/cloud/kind`, `internal/cloud/openstack`, `internal/cloud/vmware`, `internal/cloud/magnum` | Provider-specific implementations and API integration; `internal/cloud/magnum` is a small standalone client for Magnum managed-Kubernetes cluster lifecycle operations. |
 | `internal/gitops` | GitOps workspace generation, transactions, checkpoints, dry runs, and embedded assets. |
-| `internal/gitops/stages` | Ordered generation-stage implementations. |
+| `internal/gitops/stages` | Supporting ordered generation-stage implementations; `ServiceStage` is not wired into the live `cluster generate` path. |
 | `internal/template` | Template registry, rendering, composition, dependency resolution, and sandboxing. |
 | `internal/secrets` | High-level secret management, registries, rotation, revocation, hooks, drift, and multi-cluster workflows. |
 | `internal/sops` | Terminal-independent SOPS and age encryption, decryption, key management, and Git integration. |
 | `internal/credentials` | Credential parsing and representation conversion. |
 | `internal/operations` | Backup, recovery, drift detection, and scheduled operational workflows. |
 | `internal/plugins` | Discovery and attachment of external executable plugins. |
-| `internal/services` | Service plugin contracts, registry, metadata, and lifecycle descriptions. |
+| `internal/services` | Unwired service-plugin contracts, registry, metadata, and lifecycle descriptions; this is distinct from the live config/descriptor/catalog rendering path. |
 | `internal/services/descriptors` | Embedded service descriptor loading and typed descriptor data. |
 | `internal/provision` | Provisioning templates and embedded provisioning assets. |
 | `internal/tofu` | OpenTofu command integration. |
@@ -103,14 +95,23 @@ Rules:
 - Shared code needs a specific concept name and a stable policy. Similar syntax alone is not enough to create a package.
 - New general-purpose dumping grounds under `internal` or `pkg` are prohibited.
 
-The typed `di.App` graph built by `di.NewApp` is the canonical runtime wiring path. `di.NewAppContainer` exposes that graph through the older `Container` interface for callers that have not migrated. Reflection-based registration through `di.SetupContainer` and `di.NewContainer` is a compatibility boundary; new dependencies should be explicit fields and constructor calls in the typed graph.
+The typed `di.App` graph built by `di.NewApp` is the canonical runtime wiring
+path used by `cmd.ExecuteWithContext`. `di.NewAppContainer` exposes the graph
+through the older read-only `Container` interface for callers that have not
+migrated. `di.SetupContainer` registers only the components currently covered
+by the legacy container and is retained for process bootstrap/compatibility; it
+is not a complete application graph. Reflection-based registration through
+`di.SetupContainer` and `di.NewContainer` is therefore a compatibility
+boundary, not a promise that every service is registered there. New
+dependencies should be explicit fields and constructor calls in the typed
+graph.
 
 ## Runtime flow
 
-1. `main.go` installs build metadata and creates the compatibility bootstrap context.
+1. `main.go` installs build metadata, resolves the cluster root, and creates a legacy compatibility bootstrap container.
 2. `cmd.ExecuteWithContext` resolves an early configuration-directory override needed before plugin discovery.
-3. `cmd/root.go` builds `di.App`, wraps it with the read-only container adapter, and installs both values in the command context.
-4. Root command groups and discovered external plugins are attached to Cobra.
+3. `cmd/root.go` builds the typed `di.App`, wraps it with the read-only container adapter, and installs both values in the command context. The bootstrap container is not the command graph used after this point.
+4. Built-in root command groups are present; production execution then attaches discovered external plugins. The documentation generator uses `NewBuiltinRootCmd`, so generated command pages exclude external plugins.
 5. Cobra parses input and runs global option handling followed by the selected command.
 6. The command resolves typed dependencies, coordinates a domain service, and renders output or returns a wrapped error.
 7. The executable maps selected typed errors to process exit behavior and performs compatibility-container shutdown.
@@ -133,7 +134,7 @@ flowchart LR
     Use --> Persist["Explicit persistence when requested"]
 ```
 
-Path policy belongs in configuration and path packages, not individual commands. Dynamic reference resolution can depend on environment variables, files, and external secret sources; changing ordering or fallback behavior is therefore a compatibility change. Configuration tags, defaults, normalization, reference syntax, and serialized shape are effective public APIs even though the Go package is internal.
+Path policy belongs in configuration and path packages, not individual commands. Dynamic reference resolution supports configuration references (`${ref:path}`), environment variables (`${env:VAR}`), and file contents (`${file:path}`); changing ordering or fallback behavior is therefore a compatibility change. Configuration tags, defaults, normalization, reference syntax, and serialized shape are effective public APIs even though the Go package is internal.
 
 ## Data flow
 
@@ -168,7 +169,7 @@ Keep vendor-specific policy in the relevant provider or integration package. Wra
 There are currently no generated Go files marked with the standard generated-code header and no Go generation directives in the Go source tree. Several non-Go artifacts are derived or embedded and still require generated-boundary discipline:
 
 - `schema/opencenter-v2.schema.json` is derived from the v2 configuration model.
-- `docs/reference/opencenter/` is generated by `cmd/docs/generate.go`, which is selected with the tools build constraint. The generator also discovers external plugins, so output can depend on the host environment.
+- `docs/reference/opencenter/` is generated by `cmd/docs/generate.go`, which is selected with the tools build constraint. It passes `cmd.NewBuiltinRootCmd()` to the generator, so output contains only built-in commands and does not depend on external plugin discovery.
 - `hack/generate_relaypoint_fixture_configs.go` generates fixture configuration.
 - `cmd/shell-integration/`, `internal/services/descriptors/data/`, `internal/provision/templates/`, `internal/gitops/gitops-base-dir/`, and `internal/gitops/templates/` are compiled into binaries with embedding directives.
 - Template test data is also embedded by integration tests.

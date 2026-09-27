@@ -3,67 +3,70 @@ last_updated: 2026-09-25
 id: runtime-extensions-and-local-development
 title: "Explain Runtime Extensions and Local Development"
 sidebar_label: Runtime Extensions
-description: Explains production external-plugin discovery, the separate opencenter-local executable, reusable template services, disposable RustFS S3-compatible storage, and security controls around extension processes.
+description: "Execution map for production external plugins and the separate opencenter-local Kind, Gitea, Flux, and RustFS workflow."
 doc_type: explanation
 audience: "contributors, maintainers, plugin authors"
 tags: [plugins, local-development, gitea, flux, rustfs, templates]
 ---
 # Runtime extensions and local development
 
-Runtime extensibility and local development are separate from the built-in production command graph. External plugins extend the production executable at runtime; `opencenter-local` is a second executable that orchestrates disposable local Kind, Gitea, Flux, and RustFS infrastructure.
+External plugins extend the production root at runtime. `opencenter-local` is a separate executable with its own Cobra root and direct local-development services; it is not a production subcommand.
 
-## External plugin flow
+## Feature → subsystem → symbol
+
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| Production plugin attach | extension loader / `internal/plugins` | [`internal/plugins/loader.go`](../../internal/plugins/loader.go) → `LoadExternalPlugins`, `DiscoverDetailed`, `runExternal` | Cobra root, config/plugin dirs, PATH, SHA-256 checks, `security.CommandRunner`; [`internal/plugins/loader_test.go`](../../internal/plugins/loader_test.go) |
+| Plugin command | production runtime / `cmd` | [`cmd/root.go`](../../cmd/root.go) → `ExecuteWithContext` | Loads plugins after typed graph/context setup and before `ExecuteContext`; [`cmd/plugins_test.go`](../../cmd/plugins_test.go) |
+| Local root | separate executable | [`cmd/opencenter-local/main.go`](../../cmd/opencenter-local/main.go) → `main`, `newRootCmd` | Registers Gitea, RustFS, GitOps, Flux; [`cmd/opencenter-local/main_test.go`](../../cmd/opencenter-local/main_test.go) |
+| Cluster resolution | localdev / `internal/localdev` | [`internal/localdev/cluster.go`](../../internal/localdev/cluster.go) → `NewClusterResolver`, `ClusterResolver.Resolve` | Shared v2 `ConfigurationManager` and `PathResolver`; [`internal/localdev/layout_test.go`](../../internal/localdev/layout_test.go) |
+| Gitea | localdev / `internal/localdev/gitea` | [`internal/localdev/gitea/service.go`](../../internal/localdev/gitea/service.go) → service lifecycle methods | container executor, Gitea API, Kind network; [`internal/localdev/gitea/service_test.go`](../../internal/localdev/gitea/service_test.go) |
+| RustFS | localdev / `internal/localdev/rustfs` | [`internal/localdev/rustfs/service.go`](../../internal/localdev/rustfs/service.go) → `Service.Up`, `Status`, `Destroy`, `AttachKindWithKubeconfig` | `localdev.Executor`, runtime state, S3/health probes, kubeconfig; [`internal/localdev/rustfs/service_test.go`](../../internal/localdev/rustfs/service_test.go) |
+| GitOps push / Flux bootstrap | localdev / `internal/localdev/gitops`, `flux` | [`internal/localdev/gitops/service.go`](../../internal/localdev/gitops/service.go), [`internal/localdev/flux/service.go`](../../internal/localdev/flux/service.go) | `ClusterResolver`, Gitea and sanitized executor; localdev tests |
+| Reusable templates | generic template / `internal/template` | [`internal/template/engine.go`](../../internal/template/engine.go) → `TemplateEngine`; [`internal/template/registry.go`](../../internal/template/registry.go) → registries | Rendering primitives only; GitOps chooses topology; [`internal/template/engine_test.go`](../../internal/template/engine_test.go) |
+| Shared command security | security / `internal/security` | [`internal/security/command_sanitizer.go`](../../internal/security/command_sanitizer.go), `command_runner.go`, `input_validator.go`, `credential_masker.go` | No direct unsafe `os/exec` boundary; security tests |
+
+## Actual plugin path
 
 ```text
-cmd.NewBuiltinRootCmd
-  -> production ExecuteWithContext
-  -> internal/plugins.LoadExternalPlugins
-       OPENCENTER_PLUGINS_DIR
-       <config-dir>/plugins
-       PATH
-  -> executable names prefixed opencenter-
-  -> checksum status
-  -> attach non-conflicting Cobra command
-  -> forward arguments through internal/security.CommandRunner
+cmd.ExecuteWithContext
+  -> pre-parse --config-dir
+  -> NewBuiltinRootCmd + typed context
+  -> plugins.LoadExternalPlugins
+       -> OPENCENTER_PLUGINS_DIR
+       -> <config-dir>/plugins
+       -> PATH
+       -> names beginning opencenter-
+       -> checksum status
+       -> skip built-in collisions
+       -> attach Cobra command
+  -> plugin RunE -> security runner -> external process
 ```
 
-Plugins with verified checksums run normally; unverified plugins warn; checksum mismatches and verification errors are refused. Built-in command names cannot be shadowed. External plugins are discovered only in the production runtime path. The generated Cobra reference calls `NewBuiltinRootCmd()` directly and therefore does not load external plugins.
+Verified plugins run, unverified plugins warn, checksum mismatches/verification errors refuse. Generated command references call `NewBuiltinRootCmd` directly and therefore never discover plugins.
 
-## Local executable
+## Actual local path
 
-`cmd/opencenter-local/main.go` creates a separate Cobra root with:
+```text
+opencenter-local newRootCmd
+  -> gitea {up,status,destroy,attach-kind}
+  -> rustfs {up,status,destroy,attach-kind}
+  -> gitops push
+  -> flux bootstrap
+       -> ClusterResolver.Resolve (where cluster is required)
+       -> local service -> Executor -> container/API/kubectl process
+```
 
-| Command | Implementation | Role |
-|---|---|---|
-| `gitea up`, `status`, `destroy`, `attach-kind` | `internal/localdev/gitea` | Manage disposable local Gitea, credentials, repository, and Kind network attachment |
-| `rustfs up`, `status`, `destroy`, `attach-kind` | `internal/localdev/rustfs` | Manage disposable local S3-compatible storage and its Kind network attachment |
-| `gitops push` | `internal/localdev/gitops` | Operate on the local GitOps repository for a resolved cluster |
-| `flux bootstrap` | `internal/localdev/flux` | Bootstrap Flux from local Gitea |
+RustFS `up` waits for S3 and health readiness, `status` avoids credential disclosure, `destroy` removes disposable data/state, and `attach-kind` explicitly connects the service then probes authenticated reachability. `up` does not attach to Kind automatically.
 
-`internal/localdev.ClusterResolver` loads a validated cluster config through the shared configuration manager and resolves organization-aware paths. `localdev.Executor` is the command execution boundary used by local services.
+## Safe-change boundaries
 
-The `rustfs` commands provide disposable local S3-compatible storage: `up` starts RustFS and waits for S3 and health readiness, `status` reports state without exposing credentials, and `destroy` removes the container, object data, and local state. `attach-kind --cluster` connects the service to the Kind network and verifies authenticated S3 reachability from a temporary workload; `up` does not attach to Kind automatically.
-
-## Template boundary
-
-`internal/template` provides a reusable Go `TemplateEngine` with string/file rendering, syntax validation, function registration, caching, composition, embedded registries, and sandboxing. `internal/gitops` owns which embedded templates are used for cluster generation and how their outputs are owned; the generic template package does not choose provider or service topology.
-
-Generated repository templates are embedded in the binary. They do not load external plugins. External plugins are executable Cobra extensions, not template sources.
-
-## Security boundary
-
-`internal/security` is shared by production and local command paths:
-
-- `CommandSanitizer` and `CommandRunner` construct external commands safely;
-- `InputValidator` validates user-controlled identifiers and values;
-- `CredentialMasker` removes sensitive values from logs and diagnostics; and
-- `AuditLogger` emits HMAC-protected security events when enabled.
-
-Extension and local-development code should pass commands through these boundaries rather than calling `os/exec` directly or duplicating credential handling.
+- Do not add local commands to the production root or external plugins to the local executable.
+- Preserve plugin prefix, discovery order, collision protection, checksum statuses, transparent args, and exit behavior.
+- Pass external commands through the security runner and local executor; preserve input validation and credential masking.
+- Keep `internal/template` generic. GitOps owns embedded template selection and output ownership; localdev owns disposable infrastructure state.
+- Changes to cluster path/config resolution affect both production and local workflows; update the corresponding localdev tests.
 
 ## Related maps
 
-- [CLI commands](cli-commands.md) — production registration and plugin timing
-- [DI container](di-container.md) — canonical production graph
-- [GitOps engine](gitops-engine.md) — embedded generation templates
-- [Providers](providers.md) — Kind and local-development relationship
+[CLI commands](cli-commands.md) · [DI container](di-container.md) · [Providers](providers.md) · [GitOps engine](gitops-engine.md)

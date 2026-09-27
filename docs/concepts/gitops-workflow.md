@@ -18,10 +18,14 @@ Understanding the GitOps workflow helps you manage clusters effectively and trou
 
 openCenter follows these GitOps principles:
 
-1. **Git as Single Source of Truth:** All cluster state defined in Git
+1. **Git as source of generated platform state:** The generated GitOps tree is
+   reconciled from Git; local blueprints, secrets, and runtime state live in
+   separate zones.
 2. **Declarative Configuration:** Describe desired state, not steps
 3. **Automated Reconciliation:** FluxCD continuously syncs Git → Cluster
-4. **Immutable Deployments:** Changes via Git commits, not kubectl
+4. **Reviewable deployments:** Generated changes normally flow through Git
+   commits; emergency direct cluster changes remain possible but may be
+   reverted by reconciliation.
 
 **Why GitOps:** Audit trail (Git history), rollback capability (Git revert), collaboration (pull requests), security (no direct cluster access needed).
 

@@ -81,8 +81,11 @@ Every service deployment involves three distinct layers, each owned by a differe
 
 ### Desired-State Rendering Pipeline
 
-When you run `opencenter cluster generate <cluster-name>`, the CLI executes a
-multi-stage pipeline. The `ServiceStage` handles service output generation:
+When you run `opencenter cluster generate <cluster-name>`, `SetupService`
+invokes the live GitOps copy, descriptor, catalog, infrastructure, Flux-bridge,
+and promotion functions. It does **not** construct `PipelineGenerator` or
+`ServiceStage` from `internal/gitops/stages`; those are supporting APIs used by
+their own callers and tests.
 
 ```
 Cluster desired state
@@ -95,8 +98,8 @@ Cluster desired state
          │
          ▼
 ┌─────────────────────┐
-│  2. Resolve catalog │  Selects the immutable service entry and its direct
-│     entry           │  planning/rendering function references.
+│  2. Resolve service │  Selects an explicit descriptor or immutable catalog
+│     plan            │  planning/rendering function references.
 └────────┬────────────┘
          │
          ▼
@@ -119,23 +122,28 @@ Cluster desired state
 
 The template engine uses Go’s `text/template` with Sprig function support, an LRU cache for repeated renders, and template composition for shared partials. All templates are compiled into the CLI binary via `go:embed`.
 
-Source: `openCenter-cli/internal/gitops/embed.go`
+Source: `internal/gitops/embed.go`
 
 ```go
 //go:embed all:gitops-base-dir all:templates
 var Files embed.FS
 ```
 
-Source: `openCenter-cli/internal/gitops/stages/service_stage.go` -- `Execute()` method.
+The live path is implemented by `internal/cluster/setup_service.go` and the
+`internal/gitops` descriptor/catalog planners; `ServiceStage` is not the live
+generator.
 
 ### Cluster Configuration: The Input
 
-Each cluster has a configuration file (`.k8s-<env>-config.yaml`) that drives template rendering. The services section controls which services are enabled and provides service-specific parameters.
+Each cluster has a v2 configuration file at
+`<blueprints-dir>/<organization>/<cluster>/<cluster>-config.yaml` that drives
+rendering. The services section controls which services are enabled and
+provides service-specific parameters.
 
 For cert-manager, the relevant config block looks like this:
 
 ```yaml
-# From customers/example-platform/.k8s-dev-config.yaml
+# From <blueprints-dir>/example-platform/dev/dev-config.yaml
 opencenter:
   services:
     cert-manager:
@@ -395,35 +403,33 @@ Everything else — kyverno, gateway, loki, tempo, velero, metallb, and the rest
 
 The staged `ServiceStage` (`internal/gitops/stages/service_stage.go`) — the supporting, non-live pipeline API described above — has its own, separate render-condition mechanism keyed on provider/enablement/field checks; it is unrelated to the `autoServices` loop used by the live path.
 
-### Service Plugin Validation
+### Service validation boundary
 
-Before templates are rendered, the cert-manager plugin (`internal/services/plugins/cert_manager.go`) validates the configuration:
+The `CertManagerPlugin` validator in `internal/services/plugins` belongs to the
+supporting, unwired plugin subsystem. It is not a production pre-render hook
+for `cluster generate`. Live validation is owned by the typed configuration,
+the command/config validation paths, and the readiness checks invoked by
+`SetupService`; the exact checks should be read from those source paths rather
+than inferred from `ServicePlugin.Validate`.
 
-```go
-func (p *CertManagerPlugin) validate(config interface{}) error {
-    cfg, ok := config.(*services.CertManagerConfig)
-    if !ok {
-        return fmt.Errorf("invalid config type for cert-manager")
-    }
-    if cfg.IsEnabled() {
-        if cfg.LetsEncryptServer != "" && !strings.HasPrefix(cfg.LetsEncryptServer, "https://") {
-            return fmt.Errorf("letsencrypt_server must be an HTTPS URL")
-        }
-        if cfg.Email != "" && !strings.Contains(cfg.Email, "@") {
-            return fmt.Errorf("email must be a valid email address")
-        }
-    }
-    return nil
-}
-```
-
-This validator is registered on the shared validation engine as `service:cert-manager` (`internal/services/plugins/registry.go`) and runs as part of configuration validation (`cluster validate`, and the readiness checks `SetupService` runs before rendering) — not as a step inside the GitOps render pipeline itself. If validation fails, generation stops before any files are written.
+This distinction matters for every service: a validator or dependency listed in
+`internal/services/plugins` is not enforced by the live renderer unless a live
+validation path also implements it. See [Platform Services Architecture](../reference/platform-services.md)
+for the authoritative boundary.
 
 ## Generated Output Structure
 
 After `opencenter cluster generate`, the customer repository contains this structure for cert-manager:
 
-Generated files in the overlay's `services/`, `managed-services/`, and `customer-managed/` paths are tracked in `.opencenter-generated.json` at the overlay root. Keep resources not modeled by openCenter in a service's user-owned `custom/` directory; generation does not modify or delete it. Run `opencenter cluster migrate-layout --custom --org <organization> --cluster <cluster> --apply` to move pre-existing hand-authored files before regenerating.
+Generated files in the overlay's `services/`, `managed-services/`, and
+`customer-managed/` paths are tracked in the version-2 ledgers under
+`.opencenter/ownership/`: the active cluster ledger is
+`.opencenter/ownership/clusters/<cluster>.json`, while the small exact global
+allowlist is `.opencenter/ownership/global.json`. Keep resources not modeled by
+openCenter in a service's user-owned `custom/` directory; generation does not
+modify or delete existing custom content. Run
+`opencenter cluster migrate-layout --custom --org <organization> --cluster
+<cluster> --apply` to move pre-existing hand-authored files before regenerating.
 
 ```
 applications/overlays/<cluster>/
@@ -450,7 +456,7 @@ applications/overlays/<cluster>/
 │       ├── helm-values/
 │       │   └── override-values.yaml            # Helm value overrides (empty by default)
 │       └── README.md
-├── .opencenter-generated.json                  # Ownership manifest (sha256 per generated file)
+└── .opencenter/ownership/                      # Version-2 ownership ledgers
 ```
 
 ## FluxCD Reconciliation Flow
@@ -629,7 +635,7 @@ cainjector:
 
 ### Adding Custom Issuers
 
-`services/cert-manager/kustomization.yaml` is generator-owned — `planCertManagerDynamicActions` regenerates it on every `opencenter cluster generate`, and the file is tracked in `.opencenter-generated.json`. Hand-editing it to add a resource line does not survive the next regeneration.
+`services/cert-manager/kustomization.yaml` is generator-owned — `planCertManagerDynamicActions` regenerates it on every `opencenter cluster generate`, and the file is tracked in the active cluster ledger at `.opencenter/ownership/clusters/<cluster>.json`. Hand-editing it to add a resource line does not survive the next regeneration.
 
 To add resources cert-manager's typed configuration doesn't model (a hand-authored issuer, for example), put them in `services/cert-manager/custom/` and reference them from that directory's own `kustomization.yaml`, which generation creates once and never overwrites. See [Rendering Ownership and Secret Artifacts](../CODEMAPS/rendering-ownership-and-secret-artifacts.md) for the ownership contract, and [Configuration Lifecycle](configuration-lifecycle.md) for `opencenter cluster migrate-layout --custom` if you have pre-existing hand-authored files under a generator-owned path.
 

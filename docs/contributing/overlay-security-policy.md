@@ -39,7 +39,9 @@ The renderer does not enforce branch protection policies on customer-managed rep
 
 ### Source of truth
 
-Cluster-scoped secret data for overlay units is provided via the typed config surface at `secrets.overlay_units.customer_managed` in the cluster config file (`.k8s-<cluster>-config.yaml`).
+Cluster-scoped secret data for overlay units is provided via the typed config
+surface at `secrets.overlay_units.customer_managed` in the v2 blueprint at
+`<blueprints-dir>/<organization>/<cluster>/<cluster>-config.yaml`.
 
 Fields:
 

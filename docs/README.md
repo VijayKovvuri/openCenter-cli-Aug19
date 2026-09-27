@@ -1,254 +1,122 @@
 ---
 id: docs-readme
-title: "Documentation"
-sidebar_label: Documentation
-description: Repository documentation map and maintenance rules.
+title: "Documentation Maintenance"
+sidebar_label: Documentation Maintenance
+description: Repository map and maintenance guide for openCenter CLI Markdown documentation.
 doc_type: reference
 audience: "contributors, maintainers"
-tags: [documentation, maintenance]
+tags: [documentation, maintenance, diataxis]
 last_updated: 2026-09-25
 ---
-# Documentation
 
-**Purpose:** For contributors and maintainers, maps the documentation source
-tree, its publication boundary, and the rules for maintaining pages. This file
-is repository navigation, not the published documentation home; use
-[`index.md`](index.md) for reader-facing documentation.
+# Documentation maintenance
 
-This folder is the source for the openCenter CLI documentation. Pages are
-written in Markdown with YAML frontmatter and follow the
-[Diátaxis](https://diataxis.fr/) framework: every page is one of
-`tutorial`, `how-to`, `reference`, or `explanation`.
+**Purpose:** For contributors and maintainers, explains where documentation
+source lives, how pages are classified, and how to verify documentation
+changes. This is a repository guide, not a claim about a published site.
 
-## Entry points and publication boundary
+## Boundaries
 
-- [`docs/index.md`](index.md) is the canonical, reader-facing documentation
-  home and the entry point for the published site.
-- [`README.md`](../README.md) is the project-level entry point for installation,
-  quick start, support, and contribution links.
-- [`llms.txt`](../llms.txt) is curated repository navigation for code-oriented
-  readers and language models; it is not a published docs page.
-- [`docs/README.md`](README.md) is this repository map and editing guide; it is
-  not a published docs page.
-- [`CODEMAPS/`](CODEMAPS/) contains internal architecture maps for contributors
-  and maintainers. CODEMAPS are not part of the published site and must not be
-  treated as operator-facing reference documentation.
+- [`docs/index.md`](index.md) is the canonical reader-facing source index.
+- [`README.md`](../README.md) is the concise project entry point.
+- [`llms.txt`](../llms.txt) is a code-oriented navigation aid; it should not
+  duplicate the reader-facing index or generated command reference.
+- [`CODEMAPS/INDEX.md`](CODEMAPS/INDEX.md) contains repository-internal code
+  maps and is not reader-facing product documentation.
+- [`docs/README.md`](README.md) is this maintenance guide.
 
-The pages in the site map below are the publishable documentation set unless a
-section explicitly marks content as internal. The generated command pages in
-`reference/opencenter/` are published reference content, but are maintained by
-the documentation generator rather than by hand.
+The repository contains Markdown source. Do not describe a hosted site as
+published unless repository configuration or release evidence establishes that
+fact.
 
-## Layout
+## Source layout and Diátaxis classification
 
-Pages are organised by **lifecycle category**, not by Diátaxis type:
+Directories provide lifecycle navigation; they do not create a second set of
+taxonomy folders. Each reader-facing page has one `doc_type` in its YAML
+frontmatter:
 
-| Directory | Default `doc_type` | Purpose |
-|---|---|---|
-| `getting-started/` | `tutorial` | First-cluster walkthroughs |
-| `operations/` | `how-to` | Day-2 task guides |
-| `reference/` | `reference` | CLI, schema, services, flags |
-| `concepts/` | `explanation` | Architecture and rationale |
-| `providers/` | `reference` | Per-provider guides |
-| `contributing/` | mixed (`how-to`/`reference`/`explanation`) | Developer docs |
-| `CODEMAPS/` | `explanation` | Durable code-map deep dives (not part of the published site) |
+| Source area | Classification | Use it for |
+| --- | --- | --- |
+| `getting-started/` | `tutorial` | A guided first outcome |
+| `operations/` | `how-to` | A task or operational procedure |
+| `reference/` | `reference` | Structured facts, fields, commands, and options |
+| `concepts/` | `explanation` | Context, rationale, and system behavior |
+| `providers/` | Usually `reference` | Provider-specific facts and procedures |
+| `contributing/` | Choose one per page | Developer procedures, facts, or explanations |
+| `index.md`, `glossary.md` | `reference` | Navigation and terminology |
+| `CODEMAPS/` | Internal explanation | Code maps; excluded from the reader-facing set |
 
-A few pages live at the `docs/` root rather than in a lifecycle directory
-(`architecture.md`, `index.md`, `glossary.md`, `README.md`) -- see "Other"
-below.
+Use the [Diátaxis framework](https://diataxis.fr/) to choose the page type,
+but keep existing lifecycle directories. Do not create `tutorial/`,
+`how-to/`, `reference/`, or `explanation/` taxonomy directories.
 
-## Complete Site Map
+## Required page metadata
 
-### Getting Started (Tutorials)
+Reader-facing pages start with frontmatter containing:
 
-| Page | Description |
-|------|-------------|
-| [getting-started](getting-started/getting-started.md) | End-to-end first cluster walkthrough |
-| [kind-local-development](getting-started/kind-local-development.md) | Local cluster with Kind |
-| [openstack-first-cluster](getting-started/openstack-first-cluster.md) | First cluster on OpenStack |
-| [vmware-deployment](getting-started/vmware-deployment.md) | Deploy on VMware |
-| [multi-cluster-setup](getting-started/multi-cluster-setup.md) | Multiple clusters in one org |
+```yaml
+id: url-safe-slug
+title: "Page title"
+sidebar_label: Page title
+description: One-sentence scope.
+doc_type: tutorial | how-to | reference | explanation
+audience: "specific audience"
+tags: [at-least-one-tag]
+last_updated: YYYY-MM-DD
+```
 
-### Operations (How-To Guides)
+Use exactly one `doc_type`. Begin the body with a `**Purpose:**` line that
+states the audience and scope. Advance `last_updated` only for a substantive
+change to meaning, instructions, or technical facts; do not advance it for a
+link-only or formatting change.
 
-| Page | Description |
-|------|-------------|
-| [validate-configuration](operations/validate-configuration.md) | Validate cluster config |
-| [manage-secrets](operations/manage-secrets.md) | SOPS encryption lifecycle |
-| [customize-services](operations/customize-services.md) | Enable/disable/configure services |
-| [normalize-legacy-renderer-metadata](operations/normalize-legacy-renderer-metadata.md) | Remove legacy v2 renderer metadata |
-| [configure-networking](operations/configure-networking.md) | Network and DNS setup |
-| [add-worker-pools](operations/add-worker-pools.md) | Add worker node groups |
-| [manage-worker-pools](operations/manage-worker-pools.md) | Scale, update, and remove worker pools |
-| [backup-and-restore](operations/backup-and-restore.md) | Velero backup/restore |
-| [upgrade-kubernetes](operations/upgrade-kubernetes.md) | Kubernetes version upgrades |
-| [migrate-clusters](operations/migrate-clusters.md) | Cluster migration |
-| [troubleshoot-deployment](operations/troubleshoot-deployment.md) | Deployment debugging |
-| [integrate-ci-cd](operations/integrate-ci-cd.md) | CI/CD pipeline integration |
-| [create-install-cli-plugin](operations/create-install-cli-plugin.md) | CLI plugin authoring |
-| [flux-bootstrap-methods](operations/flux-bootstrap-methods.md) | Flux bootstrap options |
-| [create-kind-cluster](operations/create-kind-cluster.md) | Kind cluster creation |
-| [create-openstack-cluster](operations/create-openstack-cluster.md) | OpenStack cluster creation |
-| [deploy-openstack-cluster](operations/deploy-openstack-cluster.md) | OpenStack cluster deployment |
-| [deployment-profiles](operations/deployment-profiles.md) | Deployment method profiles |
+`docs/README.md` and `docs/CODEMAPS/**` are explicitly excluded from the
+default frontmatter audit because they are repository navigation material, but
+this guide keeps metadata so contributors can classify it consistently.
 
-### Reference
+## Maintenance workflow
 
-#### Configuration & CLI
+1. **Find the source of truth.** Re-check code, configuration, tests, and CI
+   before changing a technical claim. Prefer links to the detailed page over
+   repeating a value in an index or navigation file.
+2. **Choose the page type.** Apply one Diátaxis `doc_type`; keep the page in
+   the lifecycle directory that readers already use.
+3. **Update the page and its links.** Keep local links relative to the file,
+   point to files rather than empty directory paths, and remove links to files
+   that do not exist. Add `last_updated` for substantive changes.
+4. **Regenerate generated command reference when needed.** If the built-in
+   Cobra command tree changes, run `mise run docs-gen`. Do not hand-edit
+   `reference/opencenter/`; the generator is `go run cmd/docs/generate.go`.
+5. **Review the diff.** Confirm that examples, flags, provider boundaries,
+   and links still match the source. Avoid copying generated command details
+   into README, the index, or `llms.txt`.
 
-| Page | Description |
-|------|-------------|
-| [cli-commands](reference/cli-commands.md) | Full CLI command tree |
-| [configuration-schema](reference/configuration-schema.md) | Cluster config YAML schema |
-| [gitops-configuration](reference/gitops-configuration.md) | GitOps section field reference |
-| [configuration-precedence](reference/configuration-precedence.md) | Config override order |
-| [default-values](reference/default-values.md) | Default config values |
-| [environment-variables](reference/environment-variables.md) | Env var reference |
-| [exit-codes](reference/exit-codes.md) | CLI exit codes |
-| [file-locations](reference/file-locations.md) | Config/key file paths |
-| [validation-rules](reference/validation-rules.md) | Validation rule catalog |
-| [mise-tasks](reference/mise-tasks.md) | Development task runner |
-| [github-actions-workflows](reference/github-actions-workflows.md) | Repository CI/CD workflows and runner contract |
-| [audit-key](reference/audit-key.md) | Audit signing key |
-| [providers](reference/providers.md) | Infrastructure providers |
-| [platform-services](reference/platform-services.md) | Platform service catalog |
-| [opencenter/](reference/opencenter/) | Auto-generated per-command reference |
+## Checks
 
-#### Platform Services (per-service docs)
+The repository-defined frontmatter audit is:
 
-| Page | Category | Description |
-|------|----------|-------------|
-| [services/index](reference/services/index.md) | -- | Service matrix and overview |
-| [services/calico](reference/services/calico.md) | Networking | Calico CNI |
-| [services/cilium](reference/services/cilium.md) | Networking | Cilium CNI |
-| [services/kube-ovn](reference/services/kube-ovn.md) | Networking | Kube-OVN CNI |
-| [services/gateway-api](reference/services/gateway-api.md) | Networking | Gateway API CRDs |
-| [services/gateway](reference/services/gateway.md) | Networking | Envoy gateway |
-| [services/metallb](reference/services/metallb.md) | Networking | Bare-metal LB |
-| [services/cert-manager](reference/services/cert-manager.md) | Security | TLS certificates |
-| [services/keycloak](reference/services/keycloak.md) | Security | Identity/OIDC |
-| [services/kyverno](reference/services/kyverno.md) | Security | Policy engine |
-| [services/rbac-manager](reference/services/rbac-manager.md) | Security | RBAC management |
-| [services/sealed-secrets](reference/services/sealed-secrets.md) | Security | Encrypted secrets |
-| [services/openstack-ccm](reference/services/openstack-ccm.md) | Cloud | OpenStack CCM |
-| [services/openstack-csi](reference/services/openstack-csi.md) | Storage | Cinder CSI |
-| [services/vsphere-csi](reference/services/vsphere-csi.md) | Storage | vSphere CSI |
-| [services/longhorn](reference/services/longhorn.md) | Storage | Distributed storage |
-| [services/external-snapshotter](reference/services/external-snapshotter.md) | Storage | Volume snapshots |
-| [services/kube-prometheus-stack](reference/services/kube-prometheus-stack.md) | Observability | Prometheus + Grafana |
-| [services/loki](reference/services/loki.md) | Observability | Log aggregation |
-| [services/tempo](reference/services/tempo.md) | Observability | Distributed tracing |
-| [services/mimir](reference/services/mimir.md) | Observability | Long-term metrics |
-| [services/opentelemetry-kube-stack](reference/services/opentelemetry-kube-stack.md) | Observability | OTel collectors |
-| [services/alert-proxy](reference/services/alert-proxy.md) | Observability | Alert forwarding |
-| [services/fluxcd](reference/services/fluxcd.md) | GitOps | Continuous delivery |
-| [services/sources](reference/services/sources.md) | GitOps | Shared Flux GitRepository sources |
-| [services/weave-gitops](reference/services/weave-gitops.md) | GitOps | GitOps dashboard |
-| [services/velero](reference/services/velero.md) | Backup | Disaster recovery |
-| [services/etcd-backup](reference/services/etcd-backup.md) | Backup | etcd snapshots |
-| [services/headlamp](reference/services/headlamp.md) | Management | K8s dashboard |
-| [services/olm](reference/services/olm.md) | Management | Operator Lifecycle |
-| [services/postgres-operator](reference/services/postgres-operator.md) | Management | PostgreSQL operator |
-| [services/harbor](reference/services/harbor.md) | Management | Container registry |
-| [services/kafka-cluster](reference/services/kafka-cluster.md) | Management | Apache Kafka |
+```bash
+python3 hack/scripts/audit_doc_frontmatter.py --strict
+# or, through mise:
+mise run test-docs-frontmatter
+```
 
-### Concepts (Explanations)
+The pull-request docs workflow audits changed Markdown files and runs Vale;
+see [`.github/workflows/docs-p0.yml`](../.github/workflows/docs-p0.yml).
+For generated command pages, use `mise run test-docs` after regeneration. This
+is a repository-only check: it does not publish or deploy a documentation site.
+Its Mermaid coverage is structural and fence-only; it does not render diagrams.
 
-| Page | Description |
-|------|-------------|
-| [architecture](concepts/architecture.md) | System architecture overview |
-| [reference-architecture](concepts/reference-architecture.md) | Target cluster architecture |
-| [gitops-workflow](concepts/gitops-workflow.md) | GitOps model and FluxCD |
-| [configuration-lifecycle](concepts/configuration-lifecycle.md) | Config from init to deploy |
-| [security-model](concepts/security-model.md) | Security design and SOPS |
-| [security-update-design](concepts/security-update-design.md) | Security update/patch design |
-| [services-templates](concepts/services-templates.md) | Template rendering system |
-| [drift-detection](concepts/drift-detection.md) | Infrastructure drift |
-| [plugin-internal-services](concepts/plugin-internal-services.md) | Internal plugin system |
-| [plugin-external-cli](concepts/plugin-external-cli.md) | External CLI plugins |
-| [provider-comparison](concepts/provider-comparison.md) | Provider feature matrix |
+For the local full-package Go sweep, use `mise run test-go-all`. The task gives
+each Go test run a 15-minute timeout and, on failure, writes a transient failure
+log under `.tmp/` for diagnosis rather than keeping a repository artifact. This
+sweep is separate from `mise run test:all`, the broader aggregate of the
+repository's unit, race, vet, BDD, property, and vulnerability checks.
 
-### Providers
+## Useful entry points
 
-| Page | Description |
-|------|-------------|
-| [vmware](providers/vmware.md) | VMware provider guide |
-
-### Contributing
-
-| Page | Description |
-|------|-------------|
-| [contributing](contributing/contributing.md) | Contribution guide |
-| [pre-commit-hooks](contributing/pre-commit-hooks.md) | Install and understand repository pre-commit checks |
-| [development-setup](contributing/development-setup.md) | Dev environment setup |
-| [code-structure](contributing/code-structure.md) | Package layout |
-| [testing-guide](contributing/testing-guide.md) | Testing approach |
-| [adding-providers](contributing/adding-providers.md) | New provider guide (worked example: Magnum) |
-| [adding-services](contributing/adding-services.md) | New service guide |
-| [build-system](contributing/build-system.md) | Mise build system |
-| [release-process](contributing/release-process.md) | Release workflow |
-| [adding-a-built-in-service](contributing/adding-a-built-in-service.md) | End-to-end built-in service workflow |
-| [validation](contributing/validation.md) | `cluster validate` execution flow |
-| [services](contributing/services.md) | Service enable/disable lifecycle |
-| [rendering-contract](contributing/rendering-contract.md) | Renderer-owned vs. bootstrap-owned paths, lifecycle states |
-| [descriptor-condition-schema](contributing/descriptor-condition-schema.md) | Overlay descriptor condition operators |
-| [overlay-security-policy](contributing/overlay-security-policy.md) | Overlay rendering security policy |
-| [cluster-init-details](contributing/cluster-init-details.md) | `cluster init` internals |
-| [cluster-deploy-openstack](contributing/cluster-deploy-openstack.md) | `cluster deploy` internals (OpenStack) |
-| [kind-cluster-verification](contributing/kind-cluster-verification.md) | Kind cluster service verification |
-
-### Release Notes (GitHub Releases)
-
-Current and historical release notes come from GitHub Releases. The source of
-truth is `.github/workflows/release.yml`, which creates releases with
-`gh release create --generate-notes` when a `v*` tag is pushed. The local
-`mise run release` and `mise run publish` tasks create preflight notes under
-`bin/release/` only.
-
-| Page | Description |
-|------|-------------|
-| [GitHub Releases](https://github.com/opencenter-cloud/openCenter-cli/releases) | Current and historical release notes |
-
-### Other
-
-| Page | Description |
-|------|-------------|
-| [index](index.md) | Documentation home |
-| [glossary](glossary.md) | Term definitions |
-| [architecture](architecture.md) | Terse, contributor-facing package/entry-point map (distinct in scope from `concepts/architecture.md`) |
-
-## Non-Published Content
-
-- [`CODEMAPS/`](CODEMAPS/) -- Architecture maps for the development workflow.
-  Not part of the published site. See [CODEMAPS/INDEX.md](CODEMAPS/INDEX.md)
-  for the full set: CLI commands, cluster lifecycle, config system, DI
-  container, GitOps engine, import/operations/resilience, OpenStack provider
-  storage operations, providers, rendering ownership and secret artifacts,
-  runtime extensions and local development, and secrets management.
-
-## Editing Rules
-
-- Every page must start with YAML frontmatter: `id`, `title`,
-  `sidebar_label`, `description`, `doc_type`, `audience`, `tags`, and
-  `last_updated`.
-- `last_updated` is an ISO date (`YYYY-MM-DD`) for the most recent
-  **substantive** change to the page's meaning, instructions, or technical
-  facts. Do not advance it for formatting, spelling, or link-only edits.
-- When making a substantive documentation change, update `last_updated` in
-  the same change, review the page against current source/configuration, and
-  run the frontmatter audit before submitting. For generated CLI references,
-  regenerate the pages when the command tree changes, then verify that the
-  generated frontmatter still includes `last_updated`.
-- Pick exactly one `doc_type` per file. Split mixed content and cross-link.
-- Start the body with a `**Purpose:**` line naming the audience and scope.
-- Place pages in the lifecycle directory matching the reader's task.
-- Refresh the per-command reference under `reference/opencenter/`
-  with `go run -tags tools ./cmd/docs` when the Cobra tree changes.
-- Every technical claim must be verifiable against the current source --
-  when rewriting a page, re-derive facts from the code/schema/CI config
-  rather than carrying forward unverified prose from an earlier revision.
-
-## Tooling
-
-- `hack/scripts/audit_doc_frontmatter.py` -- verify frontmatter rules (CI-safe; run via `mise run test-docs-frontmatter`).
-- `hack/tag_wip_failures.py` -- tag failing BDD scenarios `@wip` (via `mise run tag-wip-failures`).
+- [Reader-facing documentation index](index.md)
+- [Project README](../README.md)
+- [CLI command reference](reference/cli-commands.md)
+- [Configuration schema](reference/configuration-schema.md)
+- [Glossary](glossary.md)

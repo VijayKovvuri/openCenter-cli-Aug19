@@ -1,61 +1,50 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-calico
 title: "Calico"
 sidebar_label: Calico
-description: Calico CNI configuration fields, defaults, and rendering for pod networking and network policy.
+description: Calico service configuration, generated default, and descriptor ownership.
 doc_type: reference
 audience: "platform engineers, operators"
 tags: [networking, cni, calico, services]
 ---
 
-> **Purpose:** For platform engineers and operators, documents the Calico service's configuration surface, default state, and how it is rendered.
-
-## Overview
-
-Calico is a CNI plugin that provides pod-to-pod networking and Kubernetes `NetworkPolicy` enforcement. It is the default CNI in generated openCenter cluster configuration.
+> **Evidence:** `internal/config/services/calico.go`, `internal/config/v2/defaults.go`, `internal/services/plugins/calico.go`, and `internal/services/descriptors/data/service-calico.yaml`.
 
 ## Configuration
+
+`CalicoConfig` embeds `BaseConfig` and adds `kube_api_server`. The generated default is enabled in `calico-system`.
 
 ```yaml
 opencenter:
   services:
     calico:
-      enabled: true                # default: true
-      namespace: calico-system     # default: calico-system
-      kube_api_server: ""          # optional
-      adoption_mode: managed       # managed | external | sync | deferred | takeover
-      source:
-        repo: ""
-        branch: ""
-        release: ""
-      image:
-        repository: ""
-        tag: ""
+      enabled: true
+      namespace: calico-system
+      kube_api_server:
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether Calico is deployed (`internal/config/services/calico.go`) |
-| `namespace` | string | `calico-system` | Namespace for Calico resources |
-| `kube_api_server` | string | — | Calico Kubernetes API server address (`CalicoConfig.KubeAPIServer`) |
-| `adoption_mode` | string | `managed` | See [Platform services architecture](../platform-services.md#adoption_mode) |
-| `source.repo` / `source.branch` / `source.release` | string | — | GitOps source override |
-| `image.repository` / `image.tag` | string | — | Container image override |
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `true` | `NewDefaultServiceConfig` |
+| `namespace` | `calico-system` | `NewDefaultServiceConfig` |
+| `kube_api_server` | empty | `CalicoConfig.KubeAPIServer` |
+| common fields | — | `BaseConfig`: `adoption_mode`, `source`, `image`, and `address_pool` |
 
-## Dependencies
+## Runtime behavior
 
-None enforced by `opencenter cluster service enable|disable`.
+`CalicoPlugin.Validate` only checks that the value is `*CalicoConfig`. Its plugin `Render` method is a no-op; descriptor rendering is separate.
 
-## Rendering
+## Descriptor rendering
 
-Calico has a dedicated descriptor (`internal/services/descriptors/data/service-calico.yaml`, `service: calico`) that owns every file under the `services/calico` template root; it has no conditional (`when`) files and does not aggregate into the shared Flux/sources kustomizations.
+`service-calico.yaml` declares `service: calico` and one root, `services/calico`. It declares no conditional files or aggregate targets.
 
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable calico
 opencenter cluster service disable calico
-opencenter cluster service status
 opencenter cluster service options calico
 ```

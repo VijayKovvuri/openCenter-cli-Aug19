@@ -1,62 +1,41 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-headlamp
 title: "Headlamp Dashboard"
 sidebar_label: Headlamp
-description: Kubernetes dashboard configuration, OIDC integration, secrets, and conditional dependency on Keycloak.
+description: Headlamp service configuration, OIDC dependency rule, and catalog ownership.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [dashboard, ui, oidc, headlamp, services]
+tags: [dashboard, oidc, headlamp, services]
 ---
 
-> **Purpose:** For platform engineers and operators, documents Headlamp's configuration surface and its conditional dependency on Keycloak.
-
-## Overview
-
-Headlamp provides a Kubernetes dashboard, optionally authenticated via OIDC.
+> **Evidence:** `internal/config/services/headlamp.go`, `internal/config/v2/defaults.go`, `internal/config/v2/config.go`, `internal/config/services/dependency_validator.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
+
+The generated default is enabled in `headlamp`, with hostname `dashboard.<cluster FQDN>`. `HeadlampConfig` adds `hostname`, `oidc_issuer_url`, and `oidc_client_id` to `BaseConfig`. `HeadlampSecrets` declares `oidc_client_secret`.
 
 ```yaml
 opencenter:
   services:
     headlamp:
-      enabled: true                          # default: true
-      namespace: headlamp                     # default: headlamp
-      hostname:                                # default: dashboard.<cluster_fqdn>
+      enabled: true
+      namespace: headlamp
+      hostname:
       oidc_issuer_url:
       oidc_client_id:
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether Headlamp is deployed |
-| `namespace` | string | `headlamp` | Namespace for Headlamp resources |
-| `hostname` | string | `dashboard.<cluster_fqdn>` (set by the CLI on enable) | Public hostname for the dashboard |
-| `oidc_issuer_url` | string | — | OIDC issuer URL |
-| `oidc_client_id` | string | — | OIDC client ID |
+## Runtime and rendering
 
-## Secrets
+The config dependency graph records `keycloak` for Headlamp. A separate `ValidateHeadlampOIDC` check also describes the conditional case: when Headlamp is enabled and either OIDC field is set, `keycloak` must be enabled. The repository therefore contains both an unconditional graph entry and a conditional OIDC-specific check. The catalog uses base path `applications/base/services/headlamp` and a dedicated override-values renderer. No explicit service descriptor is present.
 
-```yaml
-secrets:
-  headlamp:
-    oidc_client_secret:
-```
-
-## Dependencies
-
-`internal/config/services/dependency_validator.go` enforces a conditional rule via `ValidateHeadlampOIDC`: **if `headlamp` is enabled and either `oidc_issuer_url` or `oidc_client_id` is set, `keycloak` must also be enabled.** If neither OIDC field is set, Headlamp has no enforced dependency.
-
-## Rendering
-
-`headlamp` has no dedicated YAML descriptor; it is rendered through the built-in render catalog using a dedicated Helm override-values template.
-
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable headlamp
 opencenter cluster service disable headlamp
-opencenter cluster service status
 opencenter cluster service options headlamp
 ```

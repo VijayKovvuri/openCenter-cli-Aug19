@@ -61,6 +61,7 @@ build/
 *.bak
 *.prof
 *.tmp
+.tmp/
 invalid-output
 
 # 

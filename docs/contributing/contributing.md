@@ -91,7 +91,6 @@ mise run fmt
 mise run test
 mise run godog
 mise run tidy        # if you added/removed imports
-mise run schema-verify   # if you touched internal/config/v2 or the JSON schema
 ```
 
 The repository's `.pre-commit-config.yaml` runs gitleaks (secret scanning) and the staged documentation policy against changed files. The policy requires a staged maintained reader-facing Markdown page whenever a staged public CLI/runtime implementation changes. `mise run install-hooks` installs the hooks from that tracked configuration; `.github/workflows/pre-commit.yaml` runs the same hook set in CI on every pull request. See [Pre-commit hooks](pre-commit-hooks.md) for the path boundaries and exclusions.

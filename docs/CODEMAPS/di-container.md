@@ -1,68 +1,55 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: di-container-map
 title: "Explain the Application Dependency Graph"
 sidebar_label: DI Container
-description: Explains how the openCenter CLI constructs its typed application graph, adapts it for commands, and separates canonical wiring from legacy compatibility.
+description: "Execution map for typed application construction, command context injection, compatibility wiring, and shutdown."
 doc_type: explanation
 audience: "contributors, maintainers"
 tags: [dependency-injection, runtime, services, security, wiring]
 ---
 # Dependency injection and runtime wiring
 
-The canonical application graph is the explicit constructor chain in `internal/di/app.go:NewApp`. It returns a typed `di.App`; `di.NewAppContainer` provides the compatibility `Container` interface used by older command code.
+## Feature → subsystem → symbol
 
-## Runtime wiring
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| Process container | startup / `internal/di` | [`internal/di/container.go`](../../internal/di/container.go) → `SetupContainer`, `Container.Shutdown` | Outer compatibility container used by `main`; [`cmd/root_container_test.go`](../../cmd/root_container_test.go) |
+| Typed graph | application graph / `internal/di` | [`internal/di/app.go`](../../internal/di/app.go) → `App`, `NewApp` | Explicit constructors for paths, config, validation, security, lifecycle; [`internal/di/app_test.go`](../../internal/di/app_test.go) |
+| Command adapter | compatibility boundary / `internal/di` | [`internal/di/app_container.go`](../../internal/di/app_container.go) → `NewAppContainer` | Exposes typed graph through legacy `Container`; command context uses `AppKey` and `ContainerKey` |
+| Context retrieval | command runtime / `cmd` | [`cmd/root.go`](../../cmd/root.go) → `initializeApp`, `GetApp`, `GetContainer`, `ExecuteWithContext` | Cobra handlers retrieve graph values, not global service constructors |
+| Lifecycle services | `internal/cluster` | [`internal/di/providers.go`](../../internal/di/providers.go) → `ProvideInitService`, `ProvideConfigureService`, `ProvideValidateService`, `ProvideSetupService`, `ProvideBootstrapService` | Depends on `PathResolver`, `ValidationEngine`, and configuration managers |
+| Cross-cutting security | `internal/security` | [`internal/di/providers.go`](../../internal/di/providers.go) → `ProvideAuditLogger`, `ProvideInputValidator`, `ProvideCredentialMasker`, `ProvideCommandSanitizer`, `ProvideCommandRunner` | External process and credential boundaries; [`internal/security/command_runner_test.go`](../../internal/security/command_runner_test.go) |
+
+## Actual production path
 
 ```text
-main.go
-  -> resolve cluster base directory
-  -> di.SetupContainer (outer process container/context bridge)
+main.main
+  -> config.ResolveClustersDir
+  -> di.SetupContainer(baseDir)
+  -> context[ContainerKey]
   -> cmd.ExecuteWithContext
        -> di.NewApp(baseDir)
+            -> filesystem -> PathResolver -> logger
+            -> ConfigManager -> ValidationEngine
+            -> security providers
+            -> Init/Configure/Validate/Setup/Bootstrap services
        -> di.NewAppContainer(app)
-       -> context{AppKey, ContainerKey}
-       -> NewBuiltinRootCmd
-       -> production-only LoadExternalPlugins
-       -> Cobra ExecuteContext
+       -> context[AppKey, ContainerKey]
+       -> NewBuiltinRootCmd -> plugin load -> ExecuteContext
 ```
 
-The second executable, `cmd/opencenter-local/main.go`, has its own small Cobra root and does not use the production app graph; it constructs local-development services directly.
+`NewApp` is the command-critical source of truth. `initializeContainer` in [`cmd/root.go`](../../cmd/root.go) can fall back to `di.SetupContainer` only when typed startup wiring fails; new dependencies should not be added to the reflection-based registry merely to make a typed constructor work.
 
-## Typed graph
+`cmd/opencenter-local/main.go` is deliberately outside this graph. Its `newRootCmd` constructs the local workflow services directly; it shares security/path/config packages where needed but is not a production subcommand.
 
-`NewApp` constructs, in dependency order:
+## Safe-change boundaries
 
-1. Error handler and filesystem.
-2. `PathResolver` and logger.
-3. Configuration manager and shared `ValidationEngine`.
-4. Error formatting and security components: audit logger, input validator, credential masker, command sanitizer, and command runner.
-5. Lifecycle services: `InitService`, `ConfigureService`, `ValidateService`, `SetupService`, and `BootstrapService`.
-
-The resulting `di.App` exposes these components as typed fields. Commands retrieve it with `cmd.GetApp(ctx)` and use `cmd.GetContainer(ctx)` only where the compatibility interface is still required.
-
-## Ownership table
-
-| Component | Provider | Consumer boundary |
-|---|---|---|
-| Filesystem and paths | `internal/util/fs`, `internal/core/paths` | Config, lifecycle, GitOps, secrets, operations |
-| Config manager | `internal/config` / `internal/config/v2` | Lifecycle and command helpers |
-| Validation engine | `internal/core/validation` | Config and lifecycle readiness |
-| Security services | `internal/security` | Commands and external-process boundaries |
-| Lifecycle services | `internal/cluster` | Cobra command handlers |
-| GitOps renderer | `internal/gitops` | `SetupService` and rendering tests |
-
-## Legacy container boundary
-
-`internal/di` still contains the reflection-based `Container` and `SetupContainer` implementation for compatibility and process shutdown. It is not the source of truth for the command-critical graph. Do not add new service wiring to the legacy registry when the typed `App` can express the dependency.
-
-## Shutdown
-
-The outer process container is shut down by `main.go` after command execution or before exiting on a command error. Components that own external resources must preserve the container's shutdown semantics; command code should return errors rather than terminate the process itself.
+- Add command-critical services to `App` and explicit `Provide*` constructors first; use `NewAppContainer` only for compatibility callers.
+- Preserve both context keys and shutdown ordering. `main` shuts down the outer process container on success and error.
+- Keep constructors testable through dependency parameters; do not introduce hidden package globals or command-owned service singletons.
+- A graph change affects all command handlers that call `GetApp`; update focused graph and root-container tests with it.
 
 ## Related maps
 
-- [CLI commands](cli-commands.md) — command registration and context use
-- [Config system](config-system.md) — configuration dependencies
-- [Cluster lifecycle](cluster-lifecycle.md) — graph consumers
-- [Runtime extensions and local development](runtime-extensions-and-local-development.md) — separate local executable and plugin boundary
+[CLI commands](cli-commands.md) · [Config system](config-system.md) · [Cluster lifecycle](cluster-lifecycle.md) · [Runtime extensions](runtime-extensions-and-local-development.md)

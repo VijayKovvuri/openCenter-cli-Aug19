@@ -1,84 +1,60 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: config-system-map
 title: "Explain the Configuration System"
 sidebar_label: Config System
-description: Explains authoritative configuration loading, normalization, reference resolution, default hydration, validation, path resolution, and atomic persistence.
+description: "Execution map for v2 configuration loading, path resolution, references, defaults, validation, and persistence."
 doc_type: explanation
 audience: "contributors, maintainers, operators"
 tags: [configuration, yaml, validation, defaults, paths]
 ---
 # Configuration system
 
-The cluster configuration boundary is the v2 model and loader. The top-level `internal/config` package retains CLI settings and compatibility helpers; `internal/config/v2` owns the cluster configuration lifecycle.
+The authoritative cluster model is `internal/config/v2`. The top-level `internal/config` package still owns CLI settings and compatibility constructors; it is not a second configuration schema.
 
-## Load flow
+## Feature → subsystem → symbol
+
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| Cluster identity and paths | path resolution / `internal/core/paths` | [`internal/core/paths/resolver.go`](../../internal/core/paths/resolver.go) → `PathResolver`, `NewPathResolverWithRoots`, `Resolve`, `ResolveWithFallback` | Organization-aware `ClusterPaths`; [`internal/core/paths/resolver_test.go`](../../internal/core/paths/resolver_test.go) |
+| Native config load | v2 I/O / `internal/config/v2` | [`internal/config/v2/manager.go`](../../internal/config/v2/manager.go) → `ConfigurationManager.Load`, `loadFromCacheOrDisk`; [`internal/config/v2/io_handler.go`](../../internal/config/v2/io_handler.go) → `ConfigIOHandler` | PathResolver, cache, filesystem, `ConfigLoader`; [`internal/config/v2/io_handler_test.go`](../../internal/config/v2/io_handler_test.go) |
+| Decode/normalize/resolve/hydrate/validate/freeze | v2 pipeline / `internal/config/v2` | [`internal/config/v2/loader.go`](../../internal/config/v2/loader.go) → `LoadFromBytes`, `normalize`, `resolveReferences`, `applyDefaults`, `validate`, `freeze` | `defaults.Hydrator`, `ReferenceResolver`, `Validator`; [`internal/config/v2/loader_test.go`](../../internal/config/v2/loader_test.go) |
+| References | resolver / `internal/config/v2` | [`internal/config/v2/resolver.go`](../../internal/config/v2/resolver.go) → `ReferenceResolver.Resolve` | `${ref:}`, `${env:}`, `${file:}`; cycle/depth protection; [`internal/config/v2/resolver_test.go`](../../internal/config/v2/resolver_test.go) |
+| Defaults | defaults / `internal/config/defaults` | [`internal/config/defaults/hydrator.go`](../../internal/config/defaults/hydrator.go) → `NewHydrator`; [`internal/config/defaults/registry.go`](../../internal/config/defaults/registry.go) → `NewRegistry` | Provider/region/service defaults without replacing explicit values; [`internal/config/defaults/hydrator_test.go`](../../internal/config/defaults/hydrator_test.go) |
+| Validation | v2 validator + shared engine | [`internal/config/v2/validator.go`](../../internal/config/v2/validator.go) → `NewValidator`, `defaultValidator.Validate`; [`internal/core/validation/engine.go`](../../internal/core/validation/engine.go) → `ValidationEngine` | Schema, business, provider, deployment, service rules; [`internal/config/v2/validator_pool_test.go`](../../internal/config/v2/validator_pool_test.go) |
+| Atomic save | v2 manager / `internal/config/v2` | [`internal/config/v2/manager.go`](../../internal/config/v2/manager.go) → `ConfigurationManager.Save`; [`internal/config/v2/io_handler.go`](../../internal/config/v2/io_handler.go) → `SaveConfig` | Public encode, validation, backup, atomic filesystem write, cache update |
+| Schema/editor contract | schema / `internal/config/v2schema` | [`internal/config/v2schema/generator.go`](../../internal/config/v2schema/generator.go) → `Generate` | Generated schema reflects v2 public model; [`internal/config/v2schema/generator_test.go`](../../internal/config/v2schema/generator_test.go) |
+
+## Actual load path
 
 ```text
 cluster identifier
-  -> internal/core/paths.PathResolver
-  -> internal/config/v2 ConfigurationManager / ConfigIOHandler
-  -> ConfigLoader
-       1. Decode public YAML
-       2. Normalize aliases and canonical forms
-       3. Resolve ${ref:}, ${env:}, and ${file:} references
-       4. Apply provider/region defaults
-       5. Validate schema, business, provider, deployment, and service rules
-       6. Freeze the returned model for use
-  -> validated v2.Config
+  -> PathResolver.Resolve / ResolveWithFallback
+  -> ConfigurationManager.Load
+       -> cache lookup
+       -> ConfigIOHandler.LoadConfig
+       -> ConfigLoader.LoadFromFile -> LoadFromBytes
+            -> DecodePublicConfig
+            -> normalize
+            -> ReferenceResolver.Resolve
+            -> defaults.Hydrator
+            -> v2 Validator.Validate
+            -> freeze
+       -> cache validated model
 ```
 
-`ConfigurationManager` checks its cache before resolving a path and loading from disk. Saves validate, serialize through the public config representation, and use atomic filesystem writes.
+`ConfigurationManager.LoadWithoutValidation` is an explicit test/repair boundary and must not replace `Load` in normal command paths. `Save` validates and serializes the public v2 representation before atomic persistence; the cache is an optimization, never a source of truth.
 
-## OpenStack provider and storage persistence boundaries
+Consumers include [`internal/cluster`](../../internal/cluster), [`internal/gitops`](../../internal/gitops), [`internal/secretartifacts`](../../internal/secretartifacts), [`internal/secrets`](../../internal/secrets), [`internal/importer`](../../internal/importer), and [`internal/localdev`](../../internal/localdev). OpenStack provider plan/apply and storage apply operate on typed v2 values but add their own stale-file and recovery boundaries; see [OpenStack operations](openstack-provider-storage-operations.md).
 
-`cluster provider openstack plan/apply` loads the typed v2 configuration, performs read-only profile discovery, validates the prospective typed model, checks for stale source bytes, writes a backup, and atomically persists only local provider changes. It does not create or mutate OpenStack resources.
+## Safe-change boundaries
 
-`cluster service storage plan/apply` also uses typed v2 configuration, but its apply path explicitly sequences container/credential actions around validated persistence. It rechecks the source before writing, retains recovery state when a remote action succeeds but persistence or revocation fails, and reports partial completion to the command layer. See [OpenStack provider and storage operations](openstack-provider-storage-operations.md).
-
-## Package ownership
-
-| Package | Owns |
-|---|---|
-| `internal/config/` | CLI settings, config/state directory compatibility helpers, status updates, and constructors used by commands |
-| `internal/config/v2/` | `Config` types, `ConfigLoader`, `ConfigurationManager`, public encode/decode, reference resolver, defaults integration, and validation orchestration |
-| `internal/config/defaults/` | Provider/region default registry and hydration without overwriting explicit values |
-| `internal/config/flags/` | `cluster set` and init flag parsing, path mutation, merges, masking, and dry-run formatting |
-| `internal/config/overlay/` | Overlay unit and customer-managed configuration types |
-| `internal/config/cache/` | Named cache utilities used by configuration support code |
-| `internal/config/persistence/` | YAML/path persistence helpers used by compatibility code |
-| `internal/config/registry/` | Service configuration type registration |
-| `internal/config/services/` | Typed service configs, adoption modes, provider compatibility, dependencies, and secret requirements |
-| `internal/config/v2schema/` | JSON Schema generation and schema checks for editor support |
-| `internal/core/paths/` | Organization-aware identifiers, secure path resolution, caches, and `ClusterPaths` |
-| `internal/core/validation/` | Shared validation engine and validator implementations |
-
-Shared validation belongs to `internal/core/validation`.
-
-## Data and persistence boundaries
-
-- YAML on disk is decoded through the public v2 decoder rather than a permissive internal-only shape.
-- Reference resolution occurs before provider-region hydration and validation.
-- `ConfigManager`/`ConfigurationManager` caches are an optimization, not a second source of truth.
-- Atomic saves protect cluster config files; generated GitOps files have their own workspace/promotion transaction described in [GitOps engine](gitops-engine.md). OpenStack provider and storage operations persist typed v2 models; storage adds remote-action recovery state.
-- `PathResolver` prevents identifier/path ambiguity and keeps organization-aware layouts consistent across commands, local development, import, and secrets.
-
-## Consumers
-
-| Consumer | Uses configuration for |
-|---|---|
-| `internal/cluster` | Init, guided configuration, readiness validation, generation, bootstrap, and destroy |
-| `internal/gitops` | Descriptor conditions, render catalog decisions, infrastructure templates, Flux bridge, and overlay values |
-| `internal/secretartifacts` | Logical secret owners, target services, and physical artifact paths |
-| `internal/secrets` | Manifest payloads, overlay paths, SOPS key references, and ownership state |
-| `internal/importer` | Proposed configs and high-confidence YAML patches |
-| `internal/localdev` | Resolving a cluster before local Gitea/Flux operations |
+- Preserve public YAML field names, schema version `2.0`, reference order, default precedence, organization-aware paths, file permissions, and atomic-save behavior.
+- Add service configuration through `internal/config/services`, registration/defaults, validation, and schema generation; do not add ad-hoc maps in command handlers.
+- Do not treat `internal/config.ConfigManager`, caches, or legacy persistence helpers as authoritative for cluster data.
+- Any change to path layout must account for lifecycle, import, secrets, localdev, and existing `PathResolver` tests.
+- Provider/storage persistence must not bypass public encode/decode or source-byte checks.
 
 ## Related maps
 
-- When adding a service, update its typed registration/default shape and run the schema regeneration described in [Adding a built-in service](../contributing/adding-a-built-in-service.md#1-add-the-configuration-contract).
-- [Cluster lifecycle](cluster-lifecycle.md) — config as lifecycle input
-- [OpenStack provider and storage operations](openstack-provider-storage-operations.md) — typed provider persistence and storage recovery boundary
-- [Rendering ownership and secret artifacts](rendering-ownership-and-secret-artifacts.md) — config ownership at render time
-- [Secrets management](secrets-management.md) — config-to-secret synchronization
-- [DI container](di-container.md) — construction of config managers and services
+[DI container](di-container.md) · [Cluster lifecycle](cluster-lifecycle.md) · [GitOps engine](gitops-engine.md) · [Secrets management](secrets-management.md) · [Import and resilience](import-operations-and-resilience.md)

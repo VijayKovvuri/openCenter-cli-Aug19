@@ -1,64 +1,77 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: import-operations-and-resilience
 title: "Explain Import Operations and Resilience"
 sidebar_label: Import and Resilience
-description: Explains repository import scan/apply/report behavior, drift and backup operations, and the lock, retry, and circuit-breaker controls that protect mutating workflows.
+description: "Execution map for GitOps repository import, drift and backup operations, locks, retries, circuit breakers, and safe mutation boundaries."
 doc_type: explanation
 audience: "contributors, maintainers, operators"
 tags: [import, operations, drift, backup, resilience]
 ---
 # Import, operations, and resilience
 
-These packages support existing-cluster adoption and day-2 operation without owning the primary configuration or GitOps rendering paths.
+These are adoption and day-2 capabilities. They consume the validated config/path contracts but do not own primary config loading, GitOps rendering, or lifecycle bootstrap.
 
-## Import flow
+## Feature → subsystem → symbol
+
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| Import scan | importer / `internal/importer` | [`internal/importer/scanner.go`](../../internal/importer/scanner.go) → `NewScanner`, `Scanner.ScanRepo`, `scanCluster` | README/legacy/GitOps sources, detectors, v2 defaults, evidence/confidence/conflicts; [`cmd/cluster_import_test.go`](../../cmd/cluster_import_test.go) |
+| Import artifact/report | importer / `internal/importer` | [`internal/importer/store.go`](../../internal/importer/store.go) → `ArtifactStore`; [`internal/importer/report.go`](../../internal/importer/report.go) → `RenderScanResult` | persisted scan result, text/JSON/YAML report |
+| Import apply | importer write plan | [`internal/importer/write_plan.go`](../../internal/importer/write_plan.go) → `PrepareClusterWritePlan`, `SelectApprovedFields`, `ApplyClusterWritePlan` | PathResolver, public YAML patch, backup, explicit confirmation; [`cmd/cluster_import.go`](../../cmd/cluster_import.go) |
+| Drift | operations/cloud | [`internal/operations/drift_detector.go`](../../internal/operations/drift_detector.go) → `DriftDetector`, `NewDriftDetector`; [`internal/cloud/factory.go`](../../internal/cloud/factory.go) → `CloudProviderFactory` | desired v2 config vs provider state; [`internal/operations/drift_detector_property_test.go`](../../internal/operations/drift_detector_property_test.go) |
+| Backup | operations | [`internal/operations/backup_manager.go`](../../internal/operations/backup_manager.go) → `BackupManager`, `CreateBackup`, `RestoreBackup` | PathResolver/filesystem, tar/gzip, checksums, optional AES-256-GCM; [`internal/operations/backup_manager_test.go`](../../internal/operations/backup_manager_test.go) |
+| Locking | resilience | [`internal/resilience/lock_manager.go`](../../internal/resilience/lock_manager.go) → `LockManager`, `NewLockManager`, `Acquire` | file or Redis backend, TTL/metadata/force-break; [`internal/resilience/lock_manager_test.go`](../../internal/resilience/lock_manager_test.go) |
+| Retry | resilience | [`internal/resilience/retry.go`](../../internal/resilience/retry.go) → `RetryHandler`, `NewRetryHandler`, `DoWithResult` | bounded exponential backoff, jitter, context, retry policy; [`internal/resilience/retry_test.go`](../../internal/resilience/retry_test.go) |
+| Circuit breaking | resilience | [`internal/resilience/circuit_breaker.go`](../../internal/resilience/circuit_breaker.go) → `CircuitBreaker`, `NewCircuitBreaker`, `Call` | closed/open/half-open thresholds and timeout; [`internal/resilience/circuit_breaker_test.go`](../../internal/resilience/circuit_breaker_test.go) |
+
+## Actual import path
 
 ```text
-cluster import scan --repo-path <repo>
-  -> internal/importer.Scanner.ScanRepo
-       discover cluster directories, overlays, README, and legacy configs
-       infer provider, organization, topology, services, and fields
-       attach evidence, confidence, conflicts, and skipped fields
-  -> saved scan artifact
-cluster import report
-  -> importer.RenderScanResult (text/json/yaml)
-cluster import apply
-  -> SelectApprovedFields
-  -> protected/conflicted/low-confidence fields skipped
-  -> explicit YAML patch and diff
+cluster import scan --repo
+  -> cmd scanner setup
+  -> Scanner.ScanRepo
+       -> discover clusters/readme/legacy configs
+       -> NewV2Default + disable services
+       -> detectors infer provider/topology/services
+       -> attach evidence, confidence, conflicts, skipped fields
+       -> ArtifactStore.Save
+cluster import report --repo
+  -> ArtifactStore.LoadLatest -> RenderScanResult
+cluster import apply --repo
+  -> LoadLatest -> PrepareClusterWritePlan per cluster
+  -> SelectApprovedFields (protected/conflicted/low confidence skipped)
+  -> show diff/confirm -> ApplyClusterWritePlan
+       -> backup existing config -> write approved public YAML
 ```
 
-`internal/importer` owns discovery, detectors, namespace overrides, artifact storage, protected fields, YAML patching, and report rendering. High-confidence, non-conflicting fields can be selected; protected or ambiguous values remain for manual review. Import does not silently overwrite an existing configuration.
+Import does not silently overwrite config. The write plan either creates a new config after confirmation or patches only approved YAML paths; source evidence and skipped fields remain in the artifact/report.
 
-## Operations
+## Actual day-2/resilience path
 
-| Area | Interface/package | Boundary |
-|---|---|---|
-| Drift | `internal/operations.DriftDetector` | Load desired config, query a provider, produce severity/reconcilable drift, optionally reconcile or schedule checks |
-| Provider state | `internal/cloud.CloudProvider` | Retrieve provider state and perform provider-specific drift comparison/reconciliation |
-| Backup | `internal/operations.BackupManager` | Archive config, encrypted Age/SSH material, GitOps state, and Terraform state; list, restore, delete, and schedule backups |
-| Lifecycle locks | `internal/resilience.LockManager` | Prevent concurrent operations over a resource |
+```text
+drift
+  -> load desired v2 config -> CloudProviderFactory.GetProvider
+  -> provider.GetCurrentState -> DetectDrift -> optional Reconcile/Schedule
+backup
+  -> resolve paths -> collect config/keys/GitOps/tofu state
+  -> archive -> checksum -> optional encrypt -> restore verifies before extract
+mutating operation
+  -> LockManager.Acquire(resource, ttl)
+  -> RetryHandler.Do / CircuitBreaker.Call around transient dependency work
+  -> release lock; persist operation-specific state where required
+```
 
-Backup archives are checksummed and can be encrypted with AES-256-GCM. Restore verifies integrity before extraction. Backup retention and scheduling are operation-level concerns, not config or renderer concerns.
+Locks coordinate ownership, bootstrap state coordinates step progress, retry handles transient attempts, and circuit breakers fail fast. None replaces another.
 
-## Resilience controls
+## Safe-change boundaries
 
-`internal/resilience` provides:
-
-- `LockManager` with file or Redis backends, TTLs, metadata, refresh, inspection, and force-break operations;
-- `RetryHandler` with bounded attempts, exponential backoff, maximum delay, jitter, context cancellation, and retryable-error policy; and
-- `CircuitBreaker` with closed/open/half-open states, failure and success thresholds, timeout, and limited half-open requests.
-
-Lifecycle and other mutating command paths can combine these controls with their own persisted bootstrap state. A lock coordinates ownership; bootstrap state coordinates step progress; retry and circuit-breaker policy coordinates transient dependency failures. They are complementary, not interchangeable.
-
-## Security and filesystem boundaries
-
-Import patches and backup extraction must use validated paths and atomic filesystem helpers. External commands used by operations pass through `internal/security.CommandRunner`; audit logging and credential masking remain cross-cutting controls. Shared path and validation primitives are in `internal/core/paths` and `internal/core/validation`.
+- Keep import inference evidence-based and conservative; protected/ambiguous fields must remain reviewable.
+- Apply patches through the write-plan/public YAML path and preserve backups, permissions, and path validation.
+- Keep drift provider interfaces separate from deploy providers; do not make a report silently reconcile.
+- Preserve backup integrity checks and encrypted key material handling.
+- Every mutating path must define its lock scope, cancellation behavior, retry policy, and circuit-breaker policy rather than adding blanket retries.
 
 ## Related maps
 
-- [Cluster lifecycle](cluster-lifecycle.md) — bootstrap state and lifecycle callers
-- [Providers](providers.md) — provider drift versus deploy capabilities
-- [Config system](config-system.md) — validated target configuration
-- [Runtime extensions and local development](runtime-extensions-and-local-development.md) — security and command execution boundaries
+[Cluster lifecycle](cluster-lifecycle.md) · [Providers](providers.md) · [Config system](config-system.md) · [Runtime extensions](runtime-extensions-and-local-development.md)

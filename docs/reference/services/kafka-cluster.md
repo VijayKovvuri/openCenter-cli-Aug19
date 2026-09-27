@@ -1,48 +1,40 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-kafka-cluster
 title: "Kafka Cluster"
 sidebar_label: Kafka Cluster
-description: Apache Kafka (Strimzi) service configuration and defaults.
+description: Kafka cluster service configuration and explicit descriptor templates.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [kafka, streaming, strimzi, services]
+tags: [kafka, strimzi, services]
 ---
 
-> **Purpose:** For platform engineers, documents the Kafka cluster service's configuration surface.
-
-## Overview
-
-`kafka-cluster` deploys Apache Kafka via the Strimzi operator. It has no service-specific configuration beyond the shared `BaseConfig` fields (`internal/config/services/default_services.go` registers it as `DefaultServiceConfig`).
+> **Evidence:** `internal/config/services/default_services.go`, `internal/config/v2/defaults.go`, and `internal/services/descriptors/data/service-kafka-cluster.yaml`.
 
 ## Configuration
+
+Kafka Cluster uses `DefaultServiceConfig`; the generated default is disabled in `kafka-system`.
 
 ```yaml
 opencenter:
   services:
     kafka-cluster:
-      enabled: false               # default: false
-      namespace: kafka-system       # default: kafka-system
+      enabled: false
+      namespace: kafka-system
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether the Kafka cluster is deployed |
-| `namespace` | string | `kafka-system` | Default namespace value; **not honored at render time** — `kafka-cluster`'s Kustomization and Flux templates hardcode the `kafka-system` namespace regardless of this field (`internal/config/v2/defaults.go`) |
+`defaults.go` comments that the Kafka Kustomization and Flux templates hard-code `kafka-system`; the configured namespace therefore matches the deployment location in the current templates.
 
-## Dependencies
+## Descriptor rendering
 
-None enforced by `opencenter cluster service enable|disable`.
+`service-kafka-cluster.yaml` aggregates into `services-fluxcd-aggregate` and `services-sources-aggregate`. It lists the persistent Kafka resource, Kustomization, Strimzi operator source, and Flux templates. No conditional file is declared.
 
-## Rendering
-
-`kafka-cluster` has a dedicated descriptor (`internal/services/descriptors/data/service-kafka-cluster.yaml`, `service: kafka-cluster`) covering the Strimzi Kafka custom resource, its Kustomization, and the Strimzi operator's Flux source/Kustomization files. It aggregates into `services-fluxcd-aggregate` and `services-sources-aggregate`.
-
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable kafka-cluster
 opencenter cluster service disable kafka-cluster
-opencenter cluster service status
 opencenter cluster service options kafka-cluster
 ```

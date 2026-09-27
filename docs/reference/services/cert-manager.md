@@ -1,98 +1,63 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-cert-manager
 title: "cert-manager"
 sidebar_label: cert-manager
-description: Automated TLS certificate management with ACME/self-signed/CA issuers across multiple DNS providers.
+description: cert-manager service configuration, conditional credentials, and descriptor ownership.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [cert-manager, tls, certificates, acme, letsencrypt, services]
+tags: [cert-manager, tls, services]
 ---
 
-> **Purpose:** For platform engineers and operators, documents cert-manager's configuration surface, secrets, dependencies, and rendering.
-
-## Overview
-
-cert-manager automates TLS certificate provisioning and renewal using ACME (Let's Encrypt), self-signed, or CA-based issuers, and supports DNS-01 challenges across multiple DNS providers.
+> **Evidence:** `internal/config/services/cert_manager.go`, `internal/config/v2/defaults.go`, `internal/services/plugins/validators.go`, `internal/config/services/provider_registry.go`, `internal/config/services/secrets_validator.go`, and `internal/services/descriptors/data/service-cert-manager.yaml`.
 
 ## Configuration
+
+The generated default is enabled in `cert-manager`. `CertManagerConfig` embeds `BaseConfig`.
 
 ```yaml
 opencenter:
   services:
     cert-manager:
-      enabled: true                     # default: true
-      namespace: cert-manager           # default: cert-manager
-      email:                            # required by the CLI when enabling
-      letsencrypt_server: https://acme-v02.api.letsencrypt.org/directory
+      enabled: true
+      namespace: cert-manager
+      letsencrypt_server:
+      email:
       region:
       dns_zones: []
-      create_cluster_issuer: true
-      dns_provider:                      # route53 | designate | cloudflare | clouddns | azuredns
+      create_cluster_issuer: false
+      dns_provider:
       issuers:
-        - name: letsencrypt-prod
-          type: letsencrypt              # letsencrypt | selfsigned | ca
-          server: https://acme-v02.api.letsencrypt.org/directory
+        - name:
+          type: letsencrypt
+          server:
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether cert-manager is deployed |
-| `namespace` | string | `cert-manager` | Namespace for cert-manager resources |
-| `email` | string | — | ACME registration contact email; required by `opencenter cluster service enable cert-manager` |
-| `letsencrypt_server` | string | `https://acme-v02.api.letsencrypt.org/directory` | ACME directory URL |
-| `region` | string | — | Cloud region for DNS provider API calls |
-| `dns_zones` | list of strings | — | DNS zones managed for certificate validation |
-| `create_cluster_issuer` | bool | `true` | Create the default `ClusterIssuer` |
-| `dns_provider` | string | — | `route53` \| `designate` \| `cloudflare` \| `clouddns` \| `azuredns` |
-| `issuers` | list of `CertIssuer` | — | Additional issuers |
-| `issuers[].name` | string | required | Issuer name |
-| `issuers[].type` | string | required | `letsencrypt` \| `selfsigned` \| `ca` |
-| `issuers[].server` | string | — | ACME server URL (`letsencrypt` type) |
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `true` | `NewDefaultServiceConfig` |
+| `namespace` | `cert-manager` | `NewDefaultServiceConfig` |
+| `letsencrypt_server`, `email`, `region`, `dns_zones`, `issuers`, `dns_provider` | empty | `CertManagerConfig` |
+| `create_cluster_issuer` | false in Go zero value; schema tag documents true | `CertManagerConfig` |
+| `issuers[].name`, `type` | required fields | `CertIssuer` |
+| `issuers[].server` | empty | `CertIssuer` |
 
-### Validation
+The registered validator checks that a configured `letsencrypt_server` starts with `https://` and a configured `email` contains `@`. The provider registry records DNS provider choices and provider compatibility; it does not change the config type's fields.
 
-- `email` is required when enabling via the CLI (`cmd/cluster_service.go`).
-- `letsencrypt_server`, if set, must start with `https://`.
-- `email`, if set, must contain `@`.
+## Secrets and conditional facts
 
-## Secrets
+`OpenCenterSecrets.CertManager` contains named AWS and Cloudflare credential maps plus legacy flat fields. The service secret mapping records conditional credentials for Route53, Cloudflare, Cloud DNS, and Azure DNS; Designate is documented in that mapping as using infrastructure credentials.
 
-`schema/opencenter-v2.schema.json` defines `secrets.cert_manager` with a multi-credential shape:
+## Descriptor rendering
 
-```yaml
-secrets:
-  cert_manager:
-    aws_access_key:                     # legacy flat field
-    aws_secret_access_key:
-    cloudflare_api_token:                # legacy flat field
-    aws:
-      <credential-name>:
-        enabled: true
-        aws_access_key:
-        aws_secret_access_key:
-        region:
-        dns_zones: []
-    cloudflare:
-      <credential-name>:
-        enabled: true
-        api_token:
-        dns_zones: []
-```
+`service-cert-manager.yaml` declares `service: cert-manager`, root `services/cert-manager`, templates for its source and Flux files, and aggregate targets `services-fluxcd-aggregate` and `services-sources-aggregate`. It declares no `when` condition.
 
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
-
-## Rendering
-
-cert-manager has a dedicated descriptor (`internal/services/descriptors/data/service-cert-manager.yaml`, `service: cert-manager`) that owns everything under the `services/cert-manager` template root plus its Flux source/Kustomization files, and aggregates into `services-fluxcd-aggregate` and `services-sources-aggregate`.
-
-## CLI commands
+## Commands
 
 ```bash
-opencenter cluster service enable cert-manager --param="email=admin@example.com"
+opencenter cluster service enable cert-manager
 opencenter cluster service disable cert-manager
-opencenter cluster service status
 opencenter cluster service options cert-manager
 ```

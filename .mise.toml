@@ -421,8 +421,43 @@ test-remediation = "go test ./internal/sops ./internal/secrets ./internal/secret
 # Stress the ownership transaction and rollback paths under the race detector.
 test-remediation-race = "go test -race ./internal/secrets -run 'TestSyncSecretsSerializesConcurrentTransactions|TestReconcileStateWriteFailureRollsBackAllMutationsAndRetry' -count=3"
 
-# Test the documentation generator, including tool-tagged code.
-test-docs = "go test -tags tools ./cmd/docs -count=1"
+# Test the documentation generator and the repository's documentation contracts.
+test-docs = [
+  "go test -tags tools ./cmd/docs -count=1",
+  "mise run test-docs-idempotency",
+  "go test ./cmd -run '^TestDocsDoNotUseRemovedGACommands$' -count=1",
+  "go test ./internal/config/v2schema -run '^TestDocumentationYAMLSnippetsMatchSchema$' -count=1",
+  "mise run test-docs-frontmatter",
+  "mise run test-docs-links",
+  "mise run test-docs-mermaid"
+]
+
+# Run the complete Go package suite once, retaining a timed log only on failure.
+test-go-all = '''
+#!/usr/bin/env bash
+set -uo pipefail
+
+mkdir -p .tmp
+LOG_FILE=".tmp/test-go-all.log"
+
+{
+  START_TIME=$(date +%s)
+  printf '=== go test ./... -count=1 -timeout=15m ===\n'
+  time go test ./... -count=1 -timeout=15m
+  TEST_STATUS=$?
+  END_TIME=$(date +%s)
+  printf '=== elapsed: %ss ===\n' "$((END_TIME - START_TIME))"
+  exit "$TEST_STATUS"
+} 2>&1 | tee "$LOG_FILE"
+
+TEST_STATUS=${PIPESTATUS[0]}
+if [ "$TEST_STATUS" -eq 0 ]; then
+  rm -f "$LOG_FILE"
+else
+  printf 'Go test failed; retaining output in %s\n' "$LOG_FILE" >&2
+fi
+exit "$TEST_STATUS"
+'''
 
 # Require every generated default-overlay Kustomization to build successfully.
 test-kustomize = "go test ./internal/gitops -run '^TestGeneratedDefaultOverlayKustomizeFailureMatrix$' -count=1"
@@ -638,6 +673,12 @@ if [ "${FIRST}" != "${SECOND}" ]; then
 fi
 echo "Documentation generation is idempotent: ${SECOND}"
 '''
+
+# Check local Markdown links without accessing the network.
+test-docs-links = "python3 hack/scripts/check_doc_links.py"
+
+# Check Mermaid fence structure without requiring a Mermaid renderer.
+test-docs-mermaid = "python3 hack/scripts/check_mermaid_fences.py"
 
 # Audit every reader-facing Markdown page. This remains strict and reports
 # unrelated legacy pages until their frontmatter is remediated.

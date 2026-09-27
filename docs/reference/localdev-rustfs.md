@@ -6,7 +6,7 @@ description: Reference for the local RustFS development service and its credenti
 doc_type: reference
 audience: "contributors, maintainers"
 tags: [local-development, rustfs, reference]
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 ---
 # Local RustFS development service
 

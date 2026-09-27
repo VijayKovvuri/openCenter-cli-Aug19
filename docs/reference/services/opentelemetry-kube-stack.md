@@ -1,65 +1,38 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-opentelemetry-kube-stack
 title: "OpenTelemetry Kube Stack"
 sidebar_label: OpenTelemetry
-description: OpenTelemetry collector configuration fields, exporters, and defaults.
+description: OpenTelemetry service configuration and observability catalog ownership.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [observability, opentelemetry, tracing, services]
+tags: [observability, opentelemetry, services]
 ---
 
-> **Purpose:** For platform engineers, documents the OpenTelemetry collector stack's configuration surface.
-
-## Overview
-
-`opentelemetry-kube-stack` deploys OpenTelemetry collectors.
+> **Evidence:** `internal/config/services/opentelemetry.go`, `internal/config/v2/defaults.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
 
-```yaml
-opencenter:
-  services:
-    opentelemetry-kube-stack:
-      enabled: false                 # default: false
-      namespace: observability        # default: observability
-      collector_mode: deployment       # default: deployment; deployment | daemonset | statefulset
-      collector_replicas: 1             # default: 1
-      exporters:
-        - name: tempo
-          type: otlp                    # otlp | prometheus | jaeger
-          endpoint: tempo.observability.svc:4317
-          headers: {}
-      processors:
-        - batch
-```
+The generated default is disabled in `observability`. `OpenTelemetryConfig` embeds `BaseConfig` and adds `collector_mode`, `collector_replicas`, `exporters`, and `processors`.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether the collector stack is deployed |
-| `namespace` | string | `observability` | Namespace for collector resources |
-| `collector_mode` | string | `deployment` | `deployment` \| `daemonset` \| `statefulset` |
-| `collector_replicas` | int | `1` | Number of collector replicas |
-| `exporters` | list of `OTelExporter` | — | Export destinations |
-| `exporters[].name` | string | required | Exporter identifier |
-| `exporters[].type` | string | required | `otlp` \| `prometheus` \| `jaeger` |
-| `exporters[].endpoint` | string | required | Destination endpoint URL |
-| `exporters[].headers` | map of strings | — | Additional HTTP headers |
-| `processors` | list of strings | — | Processor pipeline stage names |
+| Field | Type-level default/evidence |
+|-------|-----------------------------|
+| `collector_mode` | `deployment` in schema tag |
+| `collector_replicas` | `1` in schema tag |
+| `exporters[].name`, `type`, `endpoint` | required fields; types include `otlp`, `prometheus`, `jaeger` |
+| `exporters[].headers` | optional string map |
+| `processors` | string list |
 
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
+`defaults.go` materializes only `enabled: false` and `namespace: observability`. Common `BaseConfig` fields remain available.
 
 ## Rendering
 
-`opentelemetry-kube-stack` has no dedicated YAML descriptor; if enabled, it is rendered through the built-in render catalog. Enabling it also causes the generated `services/sources/kustomization.yaml.tpl` to include the shared `opencenter-observability` source.
+The catalog uses observability base path `applications/base/services/observability/opentelemetry-kube-stack` and static override values. No explicit service descriptor is present.
 
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable opentelemetry-kube-stack
 opencenter cluster service disable opentelemetry-kube-stack
-opencenter cluster service status
 opencenter cluster service options opentelemetry-kube-stack
 ```

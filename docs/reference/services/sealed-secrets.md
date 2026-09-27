@@ -1,48 +1,44 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-sealed-secrets
 title: "Sealed Secrets"
 sidebar_label: Sealed Secrets
-description: Encrypted Kubernetes Secret controller configuration and defaults.
+description: Sealed Secrets service configuration and built-in catalog stages.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [secrets, encryption, gitops, services]
+tags: [secrets, security, services]
 ---
 
-> **Purpose:** For platform engineers, documents the Sealed Secrets service's configuration surface.
-
-## Overview
-
-Sealed Secrets provides a cluster-side controller that decrypts `SealedSecret` resources into regular `Secret` objects, using asymmetric encryption. It has no service-specific configuration beyond the shared `BaseConfig` fields (`internal/config/services/default_services.go` registers it as `DefaultServiceConfig`).
+> **Evidence:** `internal/config/services/default_services.go`, `internal/config/v2/defaults.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
+
+Sealed Secrets uses `DefaultServiceConfig`; the generated default is disabled in `sealed-secrets`.
 
 ```yaml
 opencenter:
   services:
     sealed-secrets:
-      enabled: true
-      namespace: sealed-secrets     # default: sealed-secrets
+      enabled: false
+      namespace: sealed-secrets
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether Sealed Secrets is deployed |
-| `namespace` | string | `sealed-secrets` | Namespace for the controller |
-
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `false` | `NewDefaultServiceConfig` |
+| `namespace` | `sealed-secrets` | `NewDefaultServiceConfig` |
+| common fields | — | `BaseConfig` |
 
 ## Rendering
 
-`sealed-secrets` has no dedicated YAML descriptor; it is rendered through the built-in render catalog, with an override Kustomization dependency on `sources` and `sealed-secrets-namespace`.
+The catalog gives Sealed Secrets namespace `sealed-secrets`, override values `keyrenewperiod: "0"`, an extra `sealed-secrets-override` stage, and override dependencies on `sources` and `sealed-secrets-namespace`. No explicit service descriptor is present.
 
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable sealed-secrets
 opencenter cluster service disable sealed-secrets
-opencenter cluster service status
 opencenter cluster service options sealed-secrets
 ```

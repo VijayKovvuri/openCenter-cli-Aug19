@@ -1,61 +1,44 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-alert-proxy
 title: "Alert Proxy"
 sidebar_label: Alert Proxy
-description: Alert forwarding proxy configuration, secrets, and rendering as a managed service.
+description: Managed alert-proxy configuration, secrets model, and descriptor conditions.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [alerting, monitoring, proxy, managed-service, services]
+tags: [alerting, monitoring, managed-service, services]
 ---
 
-> **Purpose:** For platform engineers, documents the alert proxy service, which is designed to run as a managed service.
-
-## Overview
-
-The alert proxy forwards Alertmanager webhook payloads to an external alert-management system. Its descriptor (`internal/services/descriptors/data/service-alert-proxy.yaml`) declares it under `managed_service: alert-proxy`, so it is intended for `opencenter.managed_services.alert-proxy` (enable with `--managed`), though the schema also defines an identical `opencenter.services.alert-proxy` shape. It has no default entry in generated configuration (`internal/config/v2/defaults.go`) — it is opt-in.
+> **Evidence:** `internal/config/services/alert_proxy.go`, `internal/config/v2/defaults.go`, `internal/services/plugins/registry.go`, `internal/services/plugins/default_services.go`, `internal/config/v2/config.go`, and `internal/services/descriptors/data/service-alert-proxy.yaml`.
 
 ## Configuration
+
+The descriptor names this entry `managed_service: alert-proxy`. The generated managed-service map includes it disabled, with a generated `http_route_fqdn` of `alerts.<cluster FQDN>`.
 
 ```yaml
 opencenter:
   managed_services:
     alert-proxy:
-      enabled: true
+      enabled: false
       namespace:
-      alert_manager_base_url: http://alertmanager.monitoring.svc:9093
-      http_route_fqdn: alerts.example.com
+      alert_manager_base_url:
+      http_route_fqdn:
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | — (opt-in) | Whether the alert proxy is deployed |
-| `alert_manager_base_url` | string | — | Alertmanager service base URL (`AlertProxyConfig.AlertManagerBaseURL`) |
-| `http_route_fqdn` | string | — | External FQDN for the alert proxy's HTTPRoute |
+`AlertProxyConfig` adds `alert_manager_base_url` and `http_route_fqdn` to `BaseConfig`. `AlertProxySecrets` declares `core_device_id`, `account_service_token`, and `core_account_number`.
 
-## Secrets
+## Runtime and descriptor facts
 
-```yaml
-secrets:
-  alert_proxy:
-    core_device_id:
-    account_service_token:
-    core_account_number:
-```
+The plugin registry records `kube-prometheus-stack` as an Alert Proxy dependency. The plugin status reports the two config URLs; its validator and renderer are no-op implementations after type dispatch.
 
-## Dependencies
+`service-alert-proxy.yaml` owns root `managed-services/alert-proxy`, lists source and Flux templates, and aggregates into `managed-services-fluxcd-aggregate` and `managed-services-sources-aggregate`. The repository does not declare conditional files for this descriptor.
 
-None enforced by `opencenter cluster service enable|disable`.
-
-## Rendering
-
-`alert-proxy` has a dedicated descriptor (`service-alert-proxy.yaml`, `managed_service: alert-proxy`) that owns everything under the `managed-services/alert-proxy` template root plus its Flux source and Kustomization files, and aggregates into `managed-services-fluxcd-aggregate` and `managed-services-sources-aggregate`.
-
-## CLI commands
+## Commands
 
 ```bash
-opencenter cluster service enable alert-proxy --managed --secret="core_device_id=..." --secret="account_service_token=..." --secret="core_account_number=..."
+opencenter cluster service enable alert-proxy --managed
 opencenter cluster service disable alert-proxy --managed
-opencenter cluster service status
 opencenter cluster service options alert-proxy --managed
 ```

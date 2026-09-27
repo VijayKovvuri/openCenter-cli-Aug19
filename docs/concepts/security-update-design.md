@@ -31,7 +31,7 @@ All four zones live under `~/.config/opencenter/clusters/` (or `$OPENCENTER_CLUS
 
 ```text
 ~/.config/opencenter/                       ← OPENCENTER_CONFIG_DIR
-├── config.yaml                             ← CLI settings file
+├── settings.yaml                           ← CLI settings file
 └── clusters/                               ← OPENCENTER_CLUSTERS_DIR
     ├── blueprints/                         ← OPENCENTER_BLUEPRINTS_DIR
     │   └── <org>/<cluster>/
@@ -67,7 +67,7 @@ All four zones live under `~/.config/opencenter/clusters/` (or `$OPENCENTER_CLUS
 Each zone root resolves through the same precedence order, matching the existing `OPENCENTER_CLUSTERS_DIR`/`OPENCENTER_STATE_DIR` pattern:
 
 1. The zone-specific environment variable.
-2. The corresponding `paths.*Dir` field in the CLI settings file (`~/.config/opencenter/config.yaml`).
+2. The corresponding `paths.*Dir` field in the CLI settings file (`~/.config/opencenter/settings.yaml`).
 3. A default derived from the clusters root.
 
 | Zone root | Env variable | CLI settings field | Default |

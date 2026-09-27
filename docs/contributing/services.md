@@ -152,7 +152,11 @@ Rendering translates the enabled/disabled state into files on disk. Two paths tr
          └─────────────────────────────┘
 ```
 
-The descriptor registry (`internal/gitops/descriptorcfg`) maps each service to its template roots, output paths, and conditional rendering rules. `isDescriptorEnabled()` (`internal/gitops/descriptor_renderer.go:169`) checks the `Services` or `ManagedService` map and calls `IsServiceDisabled()` to inspect the `Enabled` field via reflection.
+The descriptor loader under `internal/services/descriptors/` and the render
+catalog map services to template roots, output paths, and conditional rules.
+`isDescriptorEnabled()` in `internal/gitops/descriptor_renderer.go` checks the
+`Services` or managed-service map and calls `IsServiceDisabled()` to inspect
+the `Enabled` field via reflection.
 
 ### Cleanup of Disabled Services
 

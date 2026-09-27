@@ -1,48 +1,44 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-external-snapshotter
 title: "External Snapshotter"
 sidebar_label: External Snapshotter
-description: CSI VolumeSnapshot CRDs and controller configuration and defaults.
+description: External snapshotter service configuration and built-in catalog ownership.
 doc_type: reference
 audience: "platform engineers, storage administrators"
 tags: [storage, csi, snapshots, services]
 ---
 
-> **Purpose:** For platform engineers, documents the external snapshotter service's configuration surface.
-
-## Overview
-
-`external-snapshotter` installs the Kubernetes `VolumeSnapshot` CRDs and snapshot controller consumed by CSI drivers such as [openstack-csi](openstack-csi.md) and [vsphere-csi](vsphere-csi.md). It has no service-specific configuration beyond the shared `BaseConfig` fields (`internal/config/services/default_services.go` registers it as `DefaultServiceConfig`).
+> **Evidence:** `internal/config/services/default_services.go`, `internal/config/v2/defaults.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
+
+External Snapshotter uses `DefaultServiceConfig`; the generated default is enabled in `external-snapshotter`.
 
 ```yaml
 opencenter:
   services:
     external-snapshotter:
-      enabled: true                       # default: true
-      namespace: external-snapshotter      # default: external-snapshotter
+      enabled: true
+      namespace: external-snapshotter
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether the snapshot CRDs and controller are deployed |
-| `namespace` | string | `external-snapshotter` | Namespace for the snapshot controller |
-
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `true` | `NewDefaultServiceConfig` |
+| `namespace` | `external-snapshotter` | `NewDefaultServiceConfig` |
+| common fields | — | `BaseConfig` |
 
 ## Rendering
 
-`external-snapshotter` has no dedicated YAML descriptor; it is rendered through the built-in render catalog as a base-only entry.
+The catalog marks External Snapshotter as base-only with base path `applications/base/services/external-snapshotter`. No explicit service descriptor is present.
 
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable external-snapshotter
 opencenter cluster service disable external-snapshotter
-opencenter cluster service status
 opencenter cluster service options external-snapshotter
 ```

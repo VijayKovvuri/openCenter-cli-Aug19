@@ -63,7 +63,6 @@ func TestDocsDoNotUseRemovedGACommands(t *testing.T) {
 		filepath.Join(repoRoot, "internal", "secrets", "interfaces.go"),
 		filepath.Join(repoRoot, "internal", "secrets", "manager.go"),
 		filepath.Join(repoRoot, "internal", "sops", "manager.go"),
-		filepath.Join(repoRoot, "internal", "template", "FEATURE_FLAG.md"),
 		filepath.Join(repoRoot, "internal", "ui", "error_formatter.go"),
 		filepath.Join(repoRoot, "internal", "util", "errors", "error_handler.go"),
 	}

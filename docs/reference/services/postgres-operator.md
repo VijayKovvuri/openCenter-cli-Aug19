@@ -1,48 +1,38 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-postgres-operator
 title: "PostgreSQL Operator"
 sidebar_label: Postgres Operator
-description: PostgreSQL operator configuration and its role as a keycloak dependency.
+description: PostgreSQL operator service configuration and catalog ownership.
 doc_type: reference
 audience: "platform engineers, database administrators"
 tags: [database, postgresql, operator, services]
 ---
 
-> **Purpose:** For platform engineers, documents the postgres-operator service's configuration surface and why keycloak requires it.
-
-## Overview
-
-`postgres-operator` provisions and manages PostgreSQL clusters used by other services (e.g. [keycloak](keycloak.md)). It has no service-specific configuration beyond the shared `BaseConfig` fields (`internal/config/services/default_services.go` registers it as `DefaultServiceConfig`).
+> **Evidence:** `internal/config/services/default_services.go`, `internal/config/v2/defaults.go`, `internal/services/plugins/registry.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
+
+Postgres Operator uses `DefaultServiceConfig`; the generated default is enabled in `postgres-operator`.
 
 ```yaml
 opencenter:
   services:
     postgres-operator:
-      enabled: true                    # default: true
-      namespace: postgres-operator      # default: postgres-operator
+      enabled: true
+      namespace: postgres-operator
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether the PostgreSQL operator is deployed |
-| `namespace` | string | `postgres-operator` | Namespace for the operator |
+## Runtime and rendering
 
-## Dependencies
+The plugin registry records no dependency for Postgres Operator. The catalog sets base path `applications/base/services/postgres-operator`, enables override values containing `configGeneral.workers: 2`, and emits a source. No explicit service descriptor is present.
 
-None of its own. [keycloak](keycloak.md) requires `postgres-operator` to be enabled — see `internal/config/services/dependency_validator.go`, enforced by `opencenter cluster service enable|disable`.
-
-## Rendering
-
-`postgres-operator` has no dedicated YAML descriptor; it is rendered through the built-in render catalog, with a fixed Helm override (`configGeneral.workers: 2`).
-
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable postgres-operator
 opencenter cluster service disable postgres-operator
-opencenter cluster service status
 opencenter cluster service options postgres-operator
 ```

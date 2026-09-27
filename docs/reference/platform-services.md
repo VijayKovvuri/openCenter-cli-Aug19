@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: platform-services
 title: "Platform Services Architecture"
 sidebar_label: Platform Services Architecture
@@ -23,7 +23,7 @@ The repository contains **two independent abstractions that both call themselves
 
 This is what actually runs when you execute `opencenter cluster service enable|disable|status|options` or `opencenter cluster generate`:
 
-1. **`internal/config/services`** defines one Go struct per service with specific configuration (e.g. `CertManagerConfig`, `HarborConfig`), each embedding `BaseConfig` (`internal/config/services/base.go`). `BaseConfig` supplies the fields every service shares: `enabled`, `adoption_mode`, `namespace`, `source` (`repo`/`branch`/`release`), and `image` (`repository`/`tag`). Services without extra fields register `DefaultServiceConfig` (just `BaseConfig`) via `internal/config/services/default_services.go`.
+1. **`internal/config/services`** defines one Go struct per service with specific configuration (e.g. `CertManagerConfig`, `HarborConfig`), each embedding `BaseConfig` (`internal/config/services/base.go`). `BaseConfig` supplies the fields every service shares: `enabled`, `adoption_mode`, `namespace`, `address_pool`, `source` (`repo`/`branch`/`release`), and `image` (`repository`/`tag`). Runtime status is not stored in this declarative base config. Services without extra fields register `DefaultServiceConfig` (just `BaseConfig`) via `internal/config/services/default_services.go`.
 2. **`internal/config/registry`** maps a service name string to its registered Go config type, so `internal/config/v2.ServiceMap` can decode `opencenter.services.<name>` / `opencenter.managed_services.<name>` YAML into the correct typed struct (`internal/config/v2/services.go`).
 3. **`internal/config/services/dependency_validator.go`** is the only *enforced* dependency graph. It is a small, explicit list (`serviceDependencyGraph`) checked by `opencenter cluster service enable|disable` (via `validateServiceDependencies` in `cmd/cluster_service.go`) for the non-managed `services` map only:
    - `weave-gitops` requires `fluxcd`
@@ -32,6 +32,8 @@ This is what actually runs when you execute `opencenter cluster service enable|d
 4. **`internal/services/descriptors`** loads a fixed set of embedded YAML files (`internal/services/descriptors/data/*.yaml`) that each own a specific, named set of generated GitOps files for one service (`service: <name>`) or one managed service (`managed_service: <name>`), plus a handful of structural aggregate/root descriptors that are not tied to any single service. Each descriptor can gate whole roots or individual files behind an `enabled_when`/`when` condition evaluated against the typed v2 config (`internal/services/descriptors/loader.go`).
 5. **`internal/gitops/render_catalog.go`** defines a Go-only `RenderCatalog` of `RenderSpec` entries for every other enabled service that has no dedicated descriptor file — namespace, GitOps source name, base template path, and Flux Kustomization dependency wiring, driven purely by `BaseConfig` fields.
 6. At render time (`internal/gitops/auto_descriptor.go`), every enabled, non-external service in `opencenter.services` must resolve to *either* an explicit descriptor *or* a render catalog entry; if neither exists, generation fails with `"enabled service %q has neither an explicit descriptor nor a built-in render catalog entry"`. `fluxcd` and `sources` are treated as structural and handled by the root/aggregate descriptors rather than by an explicit `service:` descriptor.
+
+The provider-polymorphism helper in this package is an exception to the live-path summary: `ServiceProviderValidator` currently has no production callers in this repository. Its defaults and compatibility checks are implemented and tested, but are not invoked by the live enable/disable or generate paths. See [Service-provider resolution](../../internal/config/services/PROVIDER_POLYMORPHISM.md).
 
 ### The unwired system: `internal/services` + `internal/services/plugins`
 

@@ -19,7 +19,7 @@ mise run schema-v2                               # regenerate schema/opencenter-
 opencenter settings ide                          # generate the schema plus editor (YAML Language Server) setup
 ```
 
-...or read the checked-in copy at `schema/opencenter-v2.schema.json` (regenerate with `mise run schema-v2`; see [Mise Tasks Reference](mise-tasks.md)). This page is a structural map to navigate that schema, not a byte-for-byte transcription of it -- always trust the generated schema over this page for an exact enum list or a field you don't see below.
+...or read the checked-in copy at `schema/opencenter-v2.schema.json` (regenerate with `mise run schema-v2`; see [Mise Tasks Reference](mise-tasks.md)). The separate `mise run schema` task is a legacy definition and is not the task used for this v2 file. This page is a structural map to navigate the schema, not a byte-for-byte transcription of it -- always trust the generated schema over this page for an exact enum list or a field you don't see below.
 
 ## Top level (`Config`)
 
@@ -57,7 +57,7 @@ opencenter settings ide                          # generate the schema plus edit
 | `api_port` | Required, 1-65535. |
 | `kube_vip_enabled`, `kubelet_rotate_server_certs` | Booleans. |
 | `subnet_pods`, `subnet_services` | Required, IPv4 CIDR. |
-| `network_plugin` | Required; exactly one of `calico`, `cilium`, `kube-ovn` should be populated (enforced by readiness validation, not the struct itself). |
+| `network_plugin` | For non-Kind providers, exactly one of `calico`, `cilium`, `kube-ovn` must be enabled. Kind uses its built-in `kindnet` when `infrastructure.kind.disable_default_cni` is false; exactly one managed plugin is required only when that flag is true. |
 | `storage_plugin`, `security`, `oidc` | Optional sub-blocks. |
 
 ### `opencenter.infrastructure` (`InfrastructureConfig`)

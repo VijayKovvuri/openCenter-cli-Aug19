@@ -1,16 +1,16 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: openstack-provider-storage-operations
 title: "Explain OpenStack Provider and Storage Operations"
 sidebar_label: OpenStack Provider and Storage
-description: Explains the typed OpenStack provider plan/apply flow and the explicit one-service storage plan/apply flow, including persistence, credentials, and recovery boundaries.
+description: "Execution map for read-only OpenStack provider planning and explicit one-service storage planning/apply, including persistence and recovery."
 doc_type: explanation
 audience: "contributors, maintainers, operators"
 tags: [openstack, provider, storage, plan, apply, credentials]
 ---
 # OpenStack provider and storage operations
 
-OpenStack configuration is split into two explicit command families:
+These are two separate command families:
 
 ```text
 cluster provider openstack plan <cluster>
@@ -19,47 +19,63 @@ cluster service storage plan <service> --cluster <cluster> --backend swift|s3
 cluster service storage apply <service> --cluster <cluster> --backend swift|s3
 ```
 
-The provider family updates provider metadata and resource selections. The storage family provisions storage for exactly one supported service. These commands replace the former combined synchronization workflow; there is no compatibility command or implicit multi-service operation.
+## Feature → subsystem → symbol
 
-## Provider plan/apply
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| Provider command | Cobra handler / `cmd` | [`cmd/cluster_provider_openstack.go`](../../cmd/cluster_provider_openstack.go) → `newClusterProviderOpenStackCmd`, `runClusterProviderOpenStack` | v2 public decode, profile loading, output/confirmation; [`cmd/cluster_provider_openstack_test.go`](../../cmd/cluster_provider_openstack_test.go) |
+| Profile discovery | cloud adapter / `internal/cloud/openstack` | [`internal/cloud/openstack/profile.go`](../../internal/cloud/openstack/profile.go) → `LoadProfile`; [`internal/cloud/openstack/read_only_discovery.go`](../../internal/cloud/openstack/read_only_discovery.go) → `ProfileDiscovery.DiscoverWithOptions` | Gophercloud reads images/networks/subnets/project scope; [`internal/cloud/openstack/provider_test.go`](../../internal/cloud/openstack/provider_test.go) |
+| Provider plan | typed planner / `internal/cluster/provider/openstack` | [`internal/cluster/provider/openstack/service.go`](../../internal/cluster/provider/openstack/service.go) → `Plan` | Candidate v2 config, ambiguity/replacement rules, redacted result; [`internal/cluster/provider/openstack/service_test.go`](../../internal/cluster/provider/openstack/service_test.go) |
+| Provider persistence | typed persistence / same package | [`internal/cluster/provider/openstack/service.go`](../../internal/cluster/provider/openstack/service.go) → `ApplyPersistence.Apply` | Re-read/stale-byte check, backup, public marshal, atomic write; [`internal/cluster/provider/openstack/service_test.go`](../../internal/cluster/provider/openstack/service_test.go) |
+| Storage command | Cobra handler / `cmd` | [`cmd/cluster_service_storage.go`](../../cmd/cluster_service_storage.go) → `newClusterServiceStorageCmd`, `runClusterServiceStorage` | Requires one service, cluster, backend; maps partial result to exit code 4; [`cmd/cluster_service_storage_test.go`](../../cmd/cluster_service_storage_test.go) |
+| Storage plan | typed workflow / `internal/cluster/storage/openstack` | [`internal/cluster/storage/openstack/service.go`](../../internal/cluster/storage/openstack/service.go) → `ValidateOptions`, `Plan` | Service/backend allowlist, endpoint/container checks, credential reuse/rotation, preflight; [`internal/cluster/storage/openstack/service_test.go`](../../internal/cluster/storage/openstack/service_test.go) |
+| Remote adapter | OpenStack API / `internal/cloud/openstack` | [`internal/cloud/openstack/storage.go`](../../internal/cloud/openstack/storage.go) → `StorageAdapter`, `Preflight`, `EnsureContainer`, `CreateAppCredential`, `CreateEC2Credentials` | Gophercloud object storage/Keystone; [`internal/cloud/openstack/storage_test.go`](../../internal/cloud/openstack/storage_test.go) |
+| Storage apply/recovery | typed workflow | [`internal/cluster/storage/openstack/service.go`](../../internal/cluster/storage/openstack/service.go) → `Apply`, `partialResult` | Recovery journal, credential creation, stale re-read, atomic persistence, old-credential revoke; [`cmd/task16_storage_contract_test.go`](../../cmd/task16_storage_contract_test.go) |
 
-`cmd/cluster_provider_openstack.go` resolves the organization/cluster identifier, reads the native v2 configuration, requires the configured provider to be `openstack`, loads the selected `clouds.yaml` profile, and performs read-only OpenStack discovery through `internal/cloud/openstack`.
+## Actual provider path
 
-`internal/cluster/provider/openstack.Plan` receives the typed config and a discovery snapshot. It returns a prospective typed config plus a structured result. Empty or placeholder fields can be filled from unambiguous discovery; populated fields require `--replace` before they can change. Ambiguous images, networks, subnets, or availability zones are returned as selections for an explicit selector. `--import-auth` and `--import-tls` opt into importing those profile values, with sensitive result fields redacted. With `--create-internal-network`, the planner bypasses internal network/subnet discovery and selection, atomically clears the top-level and nested internal network/subnet mirrors, and sets `internal_network_mode` to `tofu-managed`; populated mirrors require `--replace`. The mode rejects internal selectors and a configured `networking.vlan.id`.
+```text
+runClusterProviderOpenStack
+  -> resolve cluster paths -> os.ReadFile -> DecodePublicConfig
+  -> LoadProfile -> ProfileDiscovery.DiscoverWithOptions (read-only)
+  -> provider/openstack.Plan
+  -> ConfigIOHandler.ValidateConfig(candidate)
+  -> [apply + confirmed + non-dry-run]
+       -> ApplyPersistence.Apply -> stale check -> backup -> atomic public config write
+```
 
-The provider path has no remote mutation capability. `plan` validates and reports the prospective configuration. `apply` repeats the plan, validates the candidate, checks that the source file has not changed, writes a backup, and atomically persists the typed configuration. `--dry-run` stops before persistence. No OpenStack resource, container, or credential is created by either provider operation.
+Provider planning fills unambiguous selections and reports ambiguous candidates. Populated values need `--replace`; optional auth/TLS imports are explicit and sensitive result values are redacted. Neither provider plan nor apply creates a remote resource, container, or credential.
 
-## Storage plan/apply
+## Actual storage path
 
-`cmd/cluster_service_storage.go` requires one service, one cluster, one backend, and an OpenStack cloud profile; it does not hardcode the service allowlist itself. `internal/cluster/storage/openstack/service.go` defines the supported service/backend mapping: `loki` accepts Swift or S3; `tempo`, `harbor`, `etcd-backup`, and `velero` accept S3 only (Tempo has no Swift backend upstream and rejects it as an unknown backend). Container/bucket names and explicit S3 endpoints are validated before remote work.
+```text
+runClusterServiceStorage
+  -> ValidateOptions -> loadStorageConfig (raw bytes + v2 decode)
+  -> LoadProfile -> NewStorageAdapter (remote backends)
+  -> storage/openstack.Plan
+       -> effective service/backend/container
+       -> adapter.Preflight(resolve owner only when needed)
+       -> prospective typed config + ordered remote actions
+  -> [plan/dry-run return] or confirmation
+  -> storage/openstack.Apply
+       -> re-read and compare original bytes
+       -> re-plan current config
+       -> EnsureContainer
+       -> create credential when needed + recovery journal
+       -> validate candidate -> backup + atomic persist
+       -> revoke replaced credential; retain recovery on partial failure
+```
 
-`internal/cluster/storage/openstack.Plan` performs storage preflight, derives the endpoint and region, and calculates typed service and secret changes before any confirmation or apply mutation. When credential creation, rotation, or revocation is required, preflight resolves the credential owner from `auth.user_id` when explicitly configured; otherwise it extracts `token.user.id` from the already-authenticated Keystone v3 result without an identity lookup. Existing complete credentials are reused unless `--rotate-credentials` is supplied. A partial credential pair blocks the plan until rotation is explicitly requested, and that already-blocked path does not require owner resolution. All output redacts generated or sensitive values; the resolved owner ID is internal preflight state and is omitted from JSON/YAML serialization.
+The supported remote mapping is `loki: swift|s3`, `tempo: s3`, `mimir: swift|s3`, `harbor: s3`, `etcd-backup: s3`, and `velero: s3`; non-remote `loki/etcd-backup/velero: none` and `harbor: filesystem` are validated in the same package but do not call the OpenStack adapter.
 
-`apply` replans against the current file and completes owner resolution before confirmation and before `EnsureContainer`. It ensures the object-store container, creates a Swift application credential or project-scoped EC2 credential when required, validates the prospective typed configuration, writes a backup, persists the configuration atomically, and then revokes a replaced credential. The resolved owner is passed explicitly to credential create/delete adapters. A recovery record tracks creation, persistence, and revocation. Owner/preflight failures occur before any container, credential, recovery, backup, or config mutation and are ordinary errors; only failures after credential creation or rotation revoke/persistence boundaries return partial status and retain recovery information. The command maps that state to exit code 4.
+## Safe-change boundaries
 
-Global `--dry-run` returns the storage plan without ensuring containers, creating credentials, persisting configuration, or revoking credentials. `--yes` is required for non-text structured apply output; text apply can use the interactive confirmation.
+- Keep provider operation read-only and storage operation explicitly mutating; do not reuse one as the other.
+- Preserve raw-source comparison before persistence, public v2 serialization, backups, credential owner resolution, redaction, and recovery state.
+- Never expose credential secrets or owner IDs in `Result`, JSON/YAML output, logs, or errors.
+- Keep the one-service contract and exit classification; adding a mapping requires config service types, validators, renderer/secret consumers, and contract tests.
+- `secrets sync` consumes resulting config later; it does not provision these OpenStack credentials.
 
-## Boundaries
+## Related maps
 
-- Provider plan/apply is local typed configuration reconciliation backed by read-only discovery.
-- Storage plan/apply is an explicit one-service provisioning workflow with remote actions, typed persistence, credential reuse/rotation, and recovery handling.
-- `secrets sync` remains the encrypted Kubernetes-manifest synchronization path; it does not provision OpenStack storage credentials.
-- `cluster status --sync` remains the live service-status path; it is unrelated to provider or storage provisioning.
-- Lifecycle deployment, GitOps generation, drift reconciliation, and external plugin execution remain separate boundaries.
-
-## Package ownership
-
-| Package | Responsibility |
-|---|---|
-| `cmd/cluster_provider.go` and `cmd/cluster_provider_openstack.go` | Register and execute provider plan/apply commands, output, confirmation, and exit classification |
-| `cmd/cluster_service.go` and `cmd/cluster_service_storage.go` | Register and execute explicit one-service storage plan/apply commands |
-| `internal/cluster/provider/openstack` | Pure typed provider planning and local atomic persistence |
-| `internal/cluster/storage/openstack` | Storage mapping, credential planning, remote-action sequencing, recovery, and atomic persistence |
-| `internal/cloud/openstack/profile.go` | `clouds.yaml` profile loading and default path resolution |
-| `internal/cloud/openstack/read_only_discovery.go` | Authenticated read-only inventory for provider selections |
-| `internal/cloud/openstack/storage.go` | Storage preflight, container, application-credential, and EC2-credential adapters |
-| `internal/config/v2` and `internal/config/services` | Typed configuration and service/secret fields persisted by the workflows |
-
-## Verification surfaces
-
-Command-tree tests assert that the legacy command path is absent and all four replacement operations are present. Provider and storage package tests cover deterministic plans, ambiguity and replacement guards, redaction, stale-file protection, credential reuse/rotation, atomic persistence, and partial/recovery outcomes. Built-in reference pages are regenerated from `cmd.NewBuiltinRootCmd()` so stale command pages are removed as part of generation.
+[Providers](providers.md) · [Config system](config-system.md) · [Secrets management](secrets-management.md) · [Cluster lifecycle](cluster-lifecycle.md)

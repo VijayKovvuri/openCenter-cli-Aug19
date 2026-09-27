@@ -1,48 +1,29 @@
-# Security Policy
+# Security policy
 
-## Supported Versions
+This repository documents how to report security issues in the CLI and its
+release artifacts. Do not include credentials or other sensitive material in a
+public issue.
 
-Security reports are accepted for:
+## Reporting a vulnerability
 
-- The latest tagged release
-- The current `main` branch
+Use a private channel, if available for this repository:
 
-Older, unsupported versions may not receive fixes.
+- [GitHub Security Advisories](https://github.com/opencenter-cloud/openCenter-cli/security/advisories)
 
-## Reporting a Vulnerability
-
-Report vulnerabilities privately through one of these channels:
-
-- GitHub Security Advisories for this repository
-- Email: `security@opencenter.cloud`
-
-Include:
-
-- A clear description of the issue
-- The affected version or commit
-- Reproduction steps or a proof of concept
-- Expected impact, if known
-
-Do not open a public GitHub issue for an unpatched vulnerability.
-
-## Response Targets
-
-The maintainers aim to:
-
-- Acknowledge reports within 3 business days
-- Provide an initial triage update within 7 business days
-- Coordinate a remediation and disclosure timeline based on severity
+Include the affected version or commit, a clear description, reproduction steps
+or a proof of concept, and the expected impact when known. If GitHub Security
+Advisories are unavailable, do not publish exploit details; use the repository's
+[issue tracker](https://github.com/opencenter-cloud/openCenter-cli/issues) to
+request a private reporting route.
 
 ## Scope
 
-In scope:
+Reports may concern:
 
-- The `opencenter` CLI
-- Release artifacts built from this repository
-- External plugin trust and execution behavior documented here
+- The `opencenter` CLI and code in this repository.
+- Release artifacts built from this repository.
+- External-plugin discovery and execution behavior implemented by the CLI.
 
-Out of scope unless directly caused by this repository:
-
-- Third-party infrastructure misconfiguration
-- Vulnerabilities in external services deployed by the CLI
-- Issues that require privileged local access without a CLI weakness
+Reports about third-party infrastructure or services are relevant here only
+when the issue is caused by this repository. Issues requiring privileged local
+access without a CLI weakness are normally outside this policy's scope.

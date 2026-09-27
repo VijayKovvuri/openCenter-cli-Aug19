@@ -80,7 +80,8 @@ CONTAINER_RUNTIME = "podman"
 | `test-build` | `go build ./...` (compile-only, no test execution). |
 | `test-remediation` | `go test ./internal/sops ./internal/secrets ./internal/secretartifacts ./internal/gitops ./cmd -count=1`. |
 | `test-remediation-race` | Runs two specific ownership/rollback tests three times under `-race`. |
-| `test-docs` | `go test -tags tools ./cmd/docs -count=1` (the doc generator's own tests). |
+| `test-docs` | Runs `go test -tags tools ./cmd/docs -count=1` plus repository-only documentation validation for maintained Markdown, links, frontmatter, and Mermaid fences. It does not publish or render documentation. |
+| `test-go-all` | Local `go test ./... -count=1 -timeout 15m` sweep; on failure, a transient failure log is written under `.tmp/` for diagnosis, not kept as a repository artifact. |
 | `test-kustomize` | `go test ./internal/gitops -run '^TestGeneratedDefaultOverlayKustomizeFailureMatrix$'`. |
 | `test-diff` | `git diff --check` (rejects whitespace errors in the working tree). |
 | `godog` | Non-`@wip` BDD scenarios. |
@@ -91,7 +92,7 @@ CONTAINER_RUNTIME = "podman"
 | `gitleaks` | `gitleaks detect --source . -c .gitleaks.toml --redact --no-banner` (full-history scan; not run in any CI workflow -- local/manual only). |
 | `integration` | Runs three named suites in sequence: cluster-setup, resilience, operations. |
 | `perf` | `go test -tags perf ./internal/config -run "TestMemoryUsageRegression"`. |
-| `test:all` | `test`, `test-race`, `vet`, `godog`, `property`, `govulncheck`, in order. |
+| `test:all` | `test`, `test-race`, `vet`, `godog`, `property`, `govulncheck`, in order. This aggregate is separate from the local full-package `test-go-all` sweep and the repository-only `test-docs` checks. |
 | `verify` | `test`, `test-race`, `test-properties`, `govulncheck` -- the local pre-push subset. |
 | `test-remediation-all` | The full remediation-branch validation matrix (build, vet, test, remediation tests + race, godog, docs tests, kustomize test, docs-idempotency, docs-frontmatter-remediation, diff check). |
 
@@ -99,11 +100,11 @@ CONTAINER_RUNTIME = "podman"
 
 | Task | What it does |
 | --- | --- |
-| `schema` | `./bin/opencenter cluster schema --pretty --out schema/cluster.schema.json`. |
-| `schema-gen` | `go run ./cmd/schema-gen/main.go --version 2.0 --output schema/cluster.schema.json`. |
+| `schema` | Legacy schema task definition; the current built-in command tree does not provide its old CLI entry point. Use `schema-v2` for the authoritative v2 schema. |
+| `schema-gen` | **Unavailable:** legacy task definition invoking `cmd/schema-gen/main.go`; that entrypoint is not present in the current tree. The checked-in v2 schema task is `schema-v2`. |
 | `schema-v2` | Regenerates `schema/opencenter-v2.schema.json` by writing and running a throwaway Go test against `internal/config/v2schema`, then deleting the test file. |
 | `validate` | `./bin/opencenter cluster validate`. |
-| `schema-verify` | End-to-end schema-change smoke test: build, generate schema, `cluster init`, `cluster update --opencenter.provider=aws`, `cluster validate`, unit tests, and BDD tests -- all against `OPENCENTER_CONFIG_DIR=./testdata/config`. |
+| `schema-verify` | **Unavailable as a supported workflow:** legacy end-to-end helper with an obsolete update step. Use `schema-v2` and targeted config tests instead. |
 
 ### Documentation
 
@@ -122,10 +123,10 @@ CONTAINER_RUNTIME = "podman"
 | `gitea-up` | `go run ./cmd/opencenter-local gitea up` -- starts and provisions a local Gitea instance. |
 | `gitea-cleanup` | `go run ./cmd/opencenter-local gitea destroy`. |
 | `active` | `./bin/opencenter cluster status`. |
-| `terraform-generate <cluster> [output-dir]` | Builds, then `./bin/opencenter cluster terraform-generate <cluster> --output-dir=<dir>`. |
+| `terraform-generate <cluster> [output-dir]` | Legacy helper definition invoking `cluster terraform-generate`; that command is not registered in the current CLI tree. Generate infrastructure through `cluster generate`. |
 | `preflight` | `./bin/opencenter cluster validate`. |
 | `install-shell-integration` | `./hack/install-shell-integration.sh`. |
-| `install-hooks` | Runs `pre-commit install --config .pre-commit-config.yaml` to install hooks from the tracked configuration. |
+| `install-hooks` | Installs the tracked pre-commit hook configuration and enables the repository hooks. |
 
 ### Cleanup
 
@@ -163,7 +164,9 @@ set -e
 '''
 ```
 
-Tasks that accept positional arguments (`release`, `publish`, `terraform-generate`, `godog-tag`, `kind-cleanup`) read `$1`, `$2`, ... from the arguments passed after the task name: `mise run release v0.0.1-rc3`.
+Tasks that accept positional arguments (`release`, `publish`, the legacy
+`terraform-generate` helper, `godog-tag`, and `kind-cleanup`) read `$1`, `$2`, ...
+from arguments passed after the task name: `mise run release v0.0.1-rc3`.
 
 ## Discovering and debugging tasks
 
@@ -183,8 +186,14 @@ mise install && mise run build && mise run test && mise run fmt
 # Before opening a PR
 mise run verify && mise run godog
 
+# Full local Go package sweep (separate from test:all)
+mise run test-go-all
+
+# Repository-only documentation checks (does not publish or render docs)
+mise run test-docs
+
 # Schema change
-mise run schema-verify
+mise run schema-v2
 
 # Cutting a release build locally (does not publish)
 mise run release v1.2.0

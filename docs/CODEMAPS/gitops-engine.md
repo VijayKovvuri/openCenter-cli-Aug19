@@ -3,65 +3,57 @@ last_updated: 2026-09-25
 id: gitops-engine-map
 title: "Explain the GitOps Generation Engine"
 sidebar_label: GitOps Engine
-description: Explains how validated configuration becomes an atomic Flux/Kustomize and infrastructure workspace through descriptors, render catalogs, templates, and promotion.
+description: "Execution map for staged GitOps rendering, template/materialization stages, validation, ownership preflight, and promotion."
 doc_type: explanation
 audience: "contributors, maintainers"
 tags: [gitops, rendering, flux, kustomize, templates]
 ---
 # GitOps engine
 
-`internal/gitops` owns generated repository output. The live command path is `SetupService.generateGitOpsManifestsWithPromotion` in `internal/cluster/setup_service.go`, which delegates to `gitops.GenerateClusterTree`. `PipelineGenerator` is a supporting staged-generation API, not the live top-level generate path.
+## Feature → subsystem → symbol
 
-## Live generation flow
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| Live generation entry | lifecycle → GitOps | [`internal/cluster/setup_service.go`](../../internal/cluster/setup_service.go) → `SetupService.generateGitOpsManifestsWithPromotion` | v2 config, SOPS encryptor, optional `tofu.ProvisionAt`; [`cmd/cluster_generate_test.go`](../../cmd/cluster_generate_test.go) |
+| One staged transaction | workspace pipeline / `internal/gitops` | [`internal/gitops/copy.go`](../../internal/gitops/copy.go) → `StagedGenerationOptions`, `GenerateClusterTree` | `WorkspaceManager`, atomic renderers, ownership promoter; [`internal/gitops/copy_test.go`](../../internal/gitops/copy_test.go) |
+| Base and application output | render modules / `internal/gitops` | [`internal/gitops/copy.go`](../../internal/gitops/copy.go) → `CopyBaseAtomic`, `RenderClusterAppsAtomic` | embedded base/templates, descriptor and catalog planners |
+| Infrastructure and Flux bridge | render modules / `internal/gitops` | [`internal/gitops/copy.go`](../../internal/gitops/copy.go) → `RenderInfrastructureClusterAtomic`, `RenderClusterFluxBridgeAtomic` | provider config, template registry; [`internal/gitops/generator_test.go`](../../internal/gitops/generator_test.go) |
+| Service decisions | descriptors/catalog / `internal/gitops` | [`internal/gitops/descriptor_renderer.go`](../../internal/gitops/descriptor_renderer.go) → `planClusterAppActions`, `validateClusterAppActions`; [`internal/gitops/auto_descriptor.go`](../../internal/gitops/auto_descriptor.go) → `planAutoServiceActions`; [`internal/gitops/render_catalog.go`](../../internal/gitops/render_catalog.go) → `newBuiltInRenderCatalog` | v2 service config, embedded descriptor registry, secret-artifact plan |
+| Manifest and secret checks | validation/encryption | [`internal/gitops/validators.go`](../../internal/gitops/validators.go) → `ManifestValidator.Validate`; [`internal/sops/manager.go`](../../internal/sops/manager.go) → `EncryptServiceOverrideValues` | SOPS/Age, YAML/Kustomize validation; [`cmd/cluster_generate_render_integration_test.go`](../../cmd/cluster_generate_render_integration_test.go) |
+| Promotion | ownership / `internal/gitops` | [`internal/gitops/ownership.go`](../../internal/gitops/ownership.go) → `promoteGeneratedTree`, `planRepositoryPromotion`, `applyGeneratedTreePlan` | v2 ledgers, hashes/modes, custom and secret-artifact exclusions; [`internal/gitops/ownership_test.go`](../../internal/gitops/ownership_test.go) |
+| Atomic file writes | workspace / `internal/gitops` | [`internal/gitops/atomic.go`](../../internal/gitops/atomic.go) → `NewAtomicWriter`, `AtomicWriter.WriteFile`; [`internal/gitops/workspace.go`](../../internal/gitops/workspace.go) → `CreateWorkspace` | temporary workspace and rename semantics; [`internal/gitops/staged_generation_test.go`](../../internal/gitops/staged_generation_test.go) |
+
+## Actual execution path
 
 ```text
-validated v2.Config
-  -> SetupService.generateGitOpsManifestsWithPromotion
-       -> gitops.GenerateClusterTree
-            -> private workspace staging
-            -> copy/render base, applications, infrastructure, and Flux bridge
-            -> optional OpenTofu materialization
-            -> encryption and manifest validation
-            -> ownership preflight and promotion
-            -> generated-file count
+SetupService.Setup
+  -> GenerateClusterTree
+       -> CreateWorkspace(os.TempDir)
+       -> CopyBaseAtomic
+       -> RenderClusterAppsAtomic
+       -> RenderInfrastructureClusterAtomic (when included)
+       -> RenderClusterFluxBridgeAtomic (when included)
+       -> Materialize (OpenTofu for non-Kind/non-Magnum)
+       -> Encrypt staged service overrides
+       -> ValidateManifest
+       -> promoteGeneratedTree(..., DryRun=true) ownership preflight
+       -> countWorkspaceFiles
+       -> [dry-run return] or promoteGeneratedTree(..., DryRun=false)
+       -> cleanup workspace
 ```
 
-`GenerateClusterTree` renders the requested tree once in a private workspace, then validates and promotes that same staged output so the final GitOps target is not partially updated. Copying, rendering, encryption, manifest validation, ownership preflight, and promotion are internal stages of this flow rather than separate command-level generation paths. OpenTofu materialization is omitted for both Kind and Magnum; other providers may materialize provider infrastructure before validation and promotion.
+The same private tree is validated, planned, and promoted; the live repository is not written before preflight succeeds. `PipelineGenerator` and stage types remain supporting library/test APIs in [`internal/gitops/pipeline.go`](../../internal/gitops/pipeline.go), not the command's top-level entry.
 
-Promotion is tracked in `internal/gitops/ownership.go` with repository-relative paths and separate version-2 ledgers. `.opencenter/ownership/clusters/<cluster>.json` records SHA-256 and mode records for the active cluster in `applications/overlays/<cluster>/`, `infrastructure/clusters/<cluster>/`, and `clusters/<cluster>/`; `clusters/<cluster>/flux-system/` is reserved for Flux bootstrap and excluded, while generated bridge files outside that directory remain owned. `.opencenter/ownership/global.json` records only the exact global allowlist (`.gitignore`, `README.md`, and the two repository `.gitkeep` files), never a recursive repository scope. Full-tree generation activates all applicable scopes and global files; applications-only and single-service promotion activate only the current application or service scope. Sibling cluster records are retained and neither inspected nor pruned by scoped updates.
+Promotion records repository-relative SHA-256/mode records in `.opencenter/ownership/clusters/<cluster>.json` and the exact global allowlist in `.opencenter/ownership/global.json`. Cluster scopes are applications, infrastructure, and cluster bridge paths; Flux bootstrap, existing `custom/`, and hash-verified secret artifacts remain outside generator ownership. Legacy `.opencenter-generated.json` sentinels fail fast.
 
-Promotion diffs planned output against the applicable ledgers and live tree to classify each path as added, updated, unchanged, seeded, renamed, adopted, or pruned. A path with an on-disk hash or mode that no longer matches its ledger entry is an ownership conflict and blocks promotion rather than being silently overwritten. `custom/` subdirectories are excluded from generator ownership: missing staged defaults can be seeded, but existing custom files are not overwritten or pruned. Hash-verified secret artifacts remain owned by secret synchronization rather than the generator. The old repository-root or current overlay `.opencenter-generated.json` manifest is rejected before mutation; it is not migrated implicitly. Dry-run runs the same preflight without writing, `Prune: false` reports retained candidates, and `AdoptGenerated` backs up and claims only an untracked planned collision. `Force` does not override ownership safety.
+## Safe-change boundaries
 
-## Package ownership
-
-| Area | Files/packages | Responsibility |
-|---|---|---|
-| Base and workspace | `copy.go`, `workspace.go`, `atomic.go`, `dryrun.go` | Copy base structure, isolate workspaces, write atomically, and support dry runs |
-| Descriptors | `descriptor_renderer.go`, `internal/services/descriptors` | Declare file roots, files, conditions, ownership, and render behavior |
-| Auto rendering | `auto_descriptor.go` | Generate Flux sources, Kustomizations, namespaces, overrides, and resources for services without explicit descriptors |
-| Catalog | `render_catalog.go` and renderer files | Hold immutable built-in service behavior as direct planning/rendering functions |
-| Infrastructure | `infrastructure_renderer.go` and embedded templates | Select provider-specific infrastructure assets |
-| Validation | `validators.go`, `security_scanner.go`, overlay validation | Validate manifests and scan generated output |
-| Diagnostics | `render_diagnostics.go` | Record descriptor decisions and planned actions |
-| Templates | `embed.go`, `templates/`, `internal/template` | Embed repository templates and provide reusable template execution primitives |
-
-## Ownership and validation
-
-`descriptor_renderer.go` and `auto_descriptor.go` build actions before writing. The planner validates descriptor coverage, config ownership, output containment, and action ownership. The immutable catalog supplies renderer functions without a mutable renderer registry or configuration-selected renderer names.
-
-A service can be rendered by an explicit descriptor or by an enabled built-in catalog entry. Auto rendering skips disabled or externally managed services. Descriptor and catalog decisions are diagnostic data, not an invitation for a generated document or runtime plugin to inject arbitrary renderers.
-
-## Infrastructure boundary
-
-`RenderInfrastructureClusterAtomic` selects templates using the provider configuration when infrastructure is included in the staged tree. The generated infrastructure workspace is separate from application overlays. `RenderClusterFluxBridgeAtomic` connects cluster-level Flux reconciliation to generated per-service overlays. Kind and Magnum skip OpenTofu materialization; other providers may invoke it after rendering.
-
-## Supporting API versus command path
-
-The staged `PipelineGenerator` abstraction, checkpoints, and stage interfaces remain useful for library consumers and tests. They should not be described as the command's current generation entry point: command execution reaches `SetupService.generateGitOpsManifestsWithPromotion`, which delegates the internal stages to `gitops.GenerateClusterTree`.
+- New output must be staged, normalized, declared/selected by descriptor or immutable catalog, and pass action containment before writing.
+- Do not add a mutable renderer registry or let plugins inject renderers; `RenderCatalog` is compiled into the binary.
+- Preserve ownership scope, ledger format/version, hash/mode conflict checks, dry-run semantics, `Prune: false`, and `AdoptGenerated` restrictions.
+- Keep `SetupService` as the live command caller; changing supporting pipeline APIs does not change the command path unless wired there explicitly.
+- Template changes can alter generated ownership and SOPS input; update renderer, ownership, and integration tests together.
 
 ## Related maps
 
-- [Cluster lifecycle](cluster-lifecycle.md) — caller and post-render flow
-- [Rendering ownership and secret artifacts](rendering-ownership-and-secret-artifacts.md) — detailed planning boundary
-- [Config system](config-system.md) — validated input contract
-- [Secrets management](secrets-management.md) — encrypted overlay values and manifest sync
+[Cluster lifecycle](cluster-lifecycle.md) · [Rendering ownership](rendering-ownership-and-secret-artifacts.md) · [Secrets management](secrets-management.md) · [Config system](config-system.md)

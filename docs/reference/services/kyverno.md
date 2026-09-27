@@ -1,48 +1,44 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-kyverno
 title: "Kyverno"
 sidebar_label: Kyverno
-description: Kubernetes-native policy engine configuration and defaults.
+description: Kyverno service configuration and built-in catalog rendering.
 doc_type: reference
-audience: "platform engineers, security engineers"
-tags: [policy, security, admission-control, services]
+audience: "platform engineers, operators"
+tags: [policy, security, services]
 ---
 
-> **Purpose:** For platform engineers and security engineers, documents the Kyverno service's configuration surface.
-
-## Overview
-
-Kyverno is a Kubernetes-native policy engine. It has no service-specific configuration beyond the shared `BaseConfig` fields (`internal/config/services/default_services.go` registers it as `DefaultServiceConfig`).
+> **Evidence:** `internal/config/services/default_services.go`, `internal/config/v2/defaults.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
+
+Kyverno uses `DefaultServiceConfig`, so it has the common `BaseConfig` fields only. The generated default is enabled in `kyverno`.
 
 ```yaml
 opencenter:
   services:
     kyverno:
-      enabled: true             # default: true
-      namespace: kyverno         # default: kyverno
+      enabled: true
+      namespace: kyverno
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether Kyverno is deployed |
-| `namespace` | string | `kyverno` | Namespace for Kyverno resources |
-
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `true` | `NewDefaultServiceConfig` |
+| `namespace` | `kyverno` | `NewDefaultServiceConfig` |
+| common fields | — | `BaseConfig` |
 
 ## Rendering
 
-`kyverno` has no dedicated YAML descriptor; it is rendered through the built-in render catalog, which wires its Kustomization to depend on `sources` and `kyverno-base`.
+The catalog marks Kyverno as base-only and adds a post-base `kyverno-default-ruleset` stage depending on `sources` and `kyverno-base`. No explicit service descriptor is present.
 
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable kyverno
 opencenter cluster service disable kyverno
-opencenter cluster service status
 opencenter cluster service options kyverno
 ```

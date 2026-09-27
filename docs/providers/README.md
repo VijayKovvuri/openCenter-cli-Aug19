@@ -1,56 +1,53 @@
 ---
-last_updated: 2026-09-25
 id: providers
-title: "Infrastructure Providers"
-sidebar_label: Infrastructure Providers
-description: Choose an openCenter infrastructure provider and find the provider-specific configuration and deployment guidance.
+title: Infrastructure providers
+sidebar_label: Infrastructure providers
+description: Reference the infrastructure provider types and common lifecycle workflow exposed by openCenter.
 doc_type: reference
-audience: "operators, platform engineers"
-tags: [providers, openstack, magnum, vmware, baremetal, kind]
+audience: openCenter users
+tags: [providers, reference]
+last_updated: 2026-09-25
 ---
-# Infrastructure Providers
+# Infrastructure providers
 
-Use this page to choose a provider before creating a cluster. The [Infrastructure Providers Reference](../reference/providers.md) has the detailed support matrix and drift-detection boundaries.
+`cluster init --type` exposes these provider names:
 
-## Current cluster providers
+| Name | Configuration boundary evidenced in this checkout |
+| --- | --- |
+| `openstack` | OpenStack cloud fields and provider lifecycle are implemented. |
+| `magnum` | OpenStack Magnum configuration and validation are implemented. |
+| `vmware` | Static VMware node inventory and VMware cloud selectors are validated. |
+| `baremetal` | Static master and worker node inventory is validated. |
+| `kind` | Local Kind configuration and container-runtime deployment are implemented. |
 
-| Provider | Use it for | Infrastructure model | Provider-specific guidance |
-| --- | --- | --- | --- |
-| OpenStack | Production private-cloud clusters | openCenter provisions infrastructure with OpenTofu and deploys Kubernetes with the supported bootstrap flow | [OpenStack first cluster](../getting-started/openstack-first-cluster.md) |
-| Magnum | Managed Kubernetes on OpenStack | The existing Magnum cluster template owns image, network, and COE choices; openCenter creates, waits for, and deletes Magnum clusters | [Infrastructure Providers Reference](../reference/providers.md#magnum) |
-| VMware | Existing vSphere estates | VMs are pre-provisioned; node definitions live under `infrastructure.compute.master_nodes` and `worker_nodes` | [VMware provider guide](vmware.md) |
-| Baremetal | Physical hosts already managed by the operator | Hosts are pre-provisioned and described with static node definitions; openCenter does not provision cloud resources | [Infrastructure Providers Reference](../reference/providers.md) |
-| Kind | Local development and CI | Kind runs a local cluster in Docker or Podman; it is not a production infrastructure target | [Kind local development](../getting-started/kind-local-development.md) |
+The configuration model also contains cloud provider types that are rejected by
+the CLI availability gate for cluster lifecycle commands. Schema presence is
+not deployment support.
 
-The canonical provider names are `openstack`, `magnum`, `vmware`, `baremetal`, and `kind`. Existing `vsphere` values are accepted as a compatibility alias for `vmware`; use `vmware` in new configuration and documentation.
-
-## Providers not available for cluster deployment
-
-The configuration schema contains typed blocks for AWS, GCP, and Azure, but the CLI currently rejects those providers for cluster initialization, generation, and deployment as planned providers. AWS-backed service integrations do not make AWS a supported cluster provider.
-
-## Configuration workflow
-
-For a new cluster, either use the guided workflow or edit the generated v2 configuration:
+## Common workflow
 
 ```bash
-opencenter cluster configure <cluster> --org <org> --type <provider>
-# or
-opencenter cluster init <cluster> --org <org> --type <provider>
-opencenter cluster edit <org>/<cluster>
-opencenter cluster validate <org>/<cluster>
-opencenter cluster generate <org>/<cluster>
-opencenter cluster deploy <org>/<cluster>
+opencenter cluster init CLUSTER --org ORG --type PROVIDER
+opencenter cluster describe ORG/CLUSTER
+opencenter cluster validate ORG/CLUSTER
+opencenter cluster generate ORG/CLUSTER
+opencenter cluster deploy ORG/CLUSTER
 ```
 
-The exact required fields are provider-specific. OpenStack requires values such as `cloud.openstack.auth_url`, `region`, `project_id`, `image_id`, and application credentials. VMware requires `cloud.vmware.vcenter_server`, `datacenter`, `datastore`, `network`, and `template`, plus pre-provisioned nodes under `compute`. Magnum requires `cloud.magnum.auth_url`, `region`, `project_id`, application credentials, and `cluster_template`.
+Use the guided configuration workflow where supported. Use
+`cluster validate --validation online` only when provider and Git remote checks
+are intended. `cluster generate` and `cluster deploy` reject providers that the
+availability gate marks unavailable.
 
-## Placeholders are not credentials
+## Provider-specific pages
 
-Initialization and full-template commands intentionally use placeholders so a configuration can be inspected before it is connected to real infrastructure. Replace every placeholder before generation or deployment. In particular, `CHANGEME`, values ending in `-placeholder`, and example values such as `your-project-id` or `vcenter.example.com` are not usable credentials or resource identifiers.
+- [VMware](vmware.md)
+- [OpenStack configuration tutorial](../getting-started/openstack-first-cluster.md)
+- [Kind configuration tutorial](../getting-started/kind-local-development.md)
 
-Run offline validation while editing and online validation when provider access is available:
+## Evidence
 
-```bash
-opencenter cluster validate <org>/<cluster>
-opencenter cluster validate <org>/<cluster> --validation online
-```
+- Provider availability: `cmd/provider_availability.go`
+- Provider initialization: `cmd/cluster_init.go`
+- Provider validation: `internal/config/v2/readiness.go`,
+  `internal/config/v2/validator_magnum_test.go`

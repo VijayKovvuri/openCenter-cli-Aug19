@@ -3,86 +3,59 @@ last_updated: 2026-09-25
 id: cluster-lifecycle-map
 title: "Explain the Cluster Lifecycle"
 sidebar_label: Cluster Lifecycle
-description: Explains how cluster configuration moves through initialization, validation, GitOps generation, resumable bootstrap, operations, and destruction.
+description: "Execution map for cluster initialization, configuration, validation, GitOps generation, provider bootstrap, day-2 operations, and destruction."
 doc_type: explanation
 audience: "contributors, maintainers, operators"
 tags: [clusters, lifecycle, bootstrap, gitops, providers]
 ---
 # Cluster lifecycle
 
-`internal/cluster` owns lifecycle orchestration. `cmd/` selects a service and translates flags; configuration, rendering, provider, and operational packages perform the work.
+`cmd/` selects an operation and translates flags. `internal/cluster` orchestrates lifecycle services; config, GitOps, cloud, security, and resilience packages perform bounded work.
 
-## Lifecycle flow
+## Feature → subsystem → symbol
+
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| Init | lifecycle / `internal/cluster` | [`internal/cluster/init_service.go`](../../internal/cluster/init_service.go) → `InitService.Initialize`, `NewInitServiceWithConfigMgr` | `PathResolver`, defaults, v2 config, SOPS/Age key setup; [`cmd/cluster_init_integration_test.go`](../../cmd/cluster_init_integration_test.go) |
+| Configure | guided config / `internal/cluster` | [`internal/cluster/configure_service.go`](../../internal/cluster/configure_service.go) → `ConfigureService.Configure` | orchestration registries, v2 persistence; [`cmd/cluster_configure_test.go`](../../cmd/cluster_configure_test.go) |
+| Validate/doctor | readiness / `internal/cluster` | [`internal/cluster/validate_service.go`](../../internal/cluster/validate_service.go) → `ValidateService.Validate`; [`cmd/cluster_validate.go`](../../cmd/cluster_validate.go) → `newClusterValidateCmd` | v2 validator, shared validation, optional provider discovery; [`cmd/cluster_validate_integration_test.go`](../../cmd/cluster_validate_integration_test.go) |
+| Generate | GitOps orchestration / `internal/cluster` | [`internal/cluster/setup_service.go`](../../internal/cluster/setup_service.go) → `SetupService.Setup`, `generateGitOpsManifestsWithPromotion` | v2 config, SOPS, `gitops.GenerateClusterTree`, optional OpenTofu; [`cmd/cluster_generate_render_integration_test.go`](../../cmd/cluster_generate_render_integration_test.go) |
+| Deploy/bootstrap | lifecycle / `internal/cluster` | [`internal/cluster/bootstrap_service.go`](../../internal/cluster/bootstrap_service.go) → `BootstrapService.Bootstrap`, `buildBootstrapSteps` | provider-specific `lifecycleBootstrapProvider`, `security.CommandRunner`, persisted `bootstrap-state.json`; [`internal/cluster/bootstrap_provider_infra_test.go`](../../internal/cluster/bootstrap_provider_infra_test.go) |
+| Destroy | lifecycle / `internal/cluster` | [`internal/cluster/destroy_service.go`](../../internal/cluster/destroy_service.go) → `DestroyInfrastructure`, `getDestroyProvider` | OpenTofu, Kind, or Magnum destroy provider; [`internal/cluster/destroy_service_test.go`](../../internal/cluster/destroy_service_test.go) |
+| Day-2 service/pool/drift/backup/lock | command + bounded subsystems | [`cmd/cluster_service.go`](../../cmd/cluster_service.go), [`cmd/cluster_pool.go`](../../cmd/cluster_pool.go), [`cmd/cluster_drift.go`](../../cmd/cluster_drift.go), [`cmd/cluster_backup.go`](../../cmd/cluster_backup.go), [`cmd/cluster_lock.go`](../../cmd/cluster_lock.go) | These do not own generation or config loading; see [operations map](import-operations-and-resilience.md) |
+| Import entry | adoption / `internal/importer` | [`cmd/cluster_import.go`](../../cmd/cluster_import.go) → scan/report/apply constructors | Separate entry into existing repositories; see [Import map](import-operations-and-resilience.md) |
+
+## Actual paths
 
 ```text
 cluster init
-  -> cluster configure (optional guided changes)
-  -> cluster validate / doctor
-  -> cluster generate
-  -> cluster deploy
-  -> cluster status, drift, backup, pool, service operations
-  -> cluster destroy
+  -> cmd handler -> InitService.Initialize -> paths/default config/key material -> v2 persistence
+cluster configure
+  -> ConfigureService -> orchestration capability/provider handlers -> v2 save
+cluster validate
+  -> ValidateService.Validate -> load/readiness/provider/service/GitOps reports
+cluster generate
+  -> SetupService.Setup -> load + ValidateForGeneration
+  -> gitops.GenerateClusterTree (see GitOps map)
+cluster deploy
+  -> BootstrapService.Bootstrap -> provider BuildSteps
+  -> bootstrap state + sanitized external commands -> endpoint/readiness
+cluster destroy
+  -> DestroyService.DestroyInfrastructure -> destroy provider BuildSteps
 ```
 
-Existing repositories can enter through `cluster import scan`, `report`, and `apply`; see [Import, operations, and resilience](import-operations-and-resilience.md).
+`SetupService.Setup` resolves organization-aware paths, loads v2 config, requires schema `2.0` and a configured GitOps directory, then passes one staged generation request. `BootstrapService` selects provider steps, records statuses and supports `OnlyStep`/`FromStep`; it is not a renderer. Destroy has its own provider contract.
 
-## Service ownership
+Provider routing is explicit: [`bootstrap_service.go`](../../internal/cluster/bootstrap_service.go) chooses OpenStack/VMware/Baremetal shared infrastructure steps, Kind steps, or Magnum steps. OpenTofu materialization is skipped for Kind and Magnum during generation. OpenStack provider/storage plan/apply are separate local/provider operations, not deploy or generate.
 
-| Service or area | Entry point | Responsibility |
-|---|---|---|
-| Init | `internal/cluster/init_service.go` | Create organization-aware cluster paths, defaults, and key material |
-| Configure | `internal/cluster/configure_service.go` and `orchestration/` | Guided provider and capability changes, then persist managed files |
-| Validate | `internal/cluster/validate_service.go` | Load config and produce readiness, provider, service, and GitOps reports |
-| Generate | `internal/cluster/setup_service.go` | Run the live GitOps generation path described below |
-| OpenStack provider/storage operations | `cmd/cluster_provider_openstack.go`, `cmd/cluster_service_storage.go`, and `internal/cluster/{provider,storage}/openstack/` | Plan/apply typed provider changes or provision one service's storage; separate from bootstrap and generation |
-| Bootstrap | `internal/cluster/bootstrap_service.go` | Execute provider-specific resumable infrastructure and cluster steps |
-| Destroy | `internal/cluster/destroy_service.go` | Execute provider-specific teardown steps |
-| Pool/service commands | `cmd/cluster_pool.go`, `cmd/cluster_service.go` | Mutate or inspect declared cluster topology and services |
+## Safe-change boundaries
 
-## Generate path
-
-`SetupService.Setup` resolves the cluster, loads configuration, checks schema version `2.0`, validates setup inputs, and calls `SetupService.generateGitOpsManifestsWithPromotion`. That method builds `gitops.StagedGenerationOptions` and delegates the live generation flow to `gitops.GenerateClusterTree`.
-
-`GenerateClusterTree` owns the single staged-tree transaction. Its internal stages create a private workspace, copy and render the base and cluster content, optionally render infrastructure and the Flux bridge, materialize provider infrastructure, encrypt the staged application overlay, validate manifests, run ownership preflight, count generated files, and promote the validated tree. OpenTofu materialization is skipped for both Kind and Magnum; other providers may supply the OpenTofu materialization stage. Dry-run uses the same staged tree and preflight without the final promotion.
-
-`PipelineGenerator` remains a supporting `internal/gitops` API for staged generation abstractions. It is not the live top-level path used by `SetupService`.
-
-See [GitOps engine](gitops-engine.md) and [Rendering ownership and secret artifacts](rendering-ownership-and-secret-artifacts.md).
-
-## OpenStack provider and storage operations
-
-The lifecycle flow exposes two explicit OpenStack operation families outside bootstrap and generation. `cluster provider openstack plan/apply` performs read-only discovery and persists only validated typed provider changes. `cluster service storage plan/apply` provisions exactly one supported service's Swift or S3 storage mapping and sequences remote actions, typed persistence, credential reuse/rotation, and recovery. See [OpenStack provider and storage operations](openstack-provider-storage-operations.md).
-
-## Bootstrap path
-
-`BootstrapService` loads the validated config, resolves runtime log/state paths, selects a lifecycle provider, builds ordered steps, and persists step status in `bootstrap-state.json`. `--step` selects one step; `--from-step` resumes from a step boundary. The result includes a dry-run plan, completed/failed step IDs, endpoint, log path, and resume-state path.
-
-| Provider path | Bootstrap implementation | Main boundary |
-|---|---|---|
-| OpenStack | `openstackBootstrapProvider` in `bootstrap_provider_infra.go` | OpenTofu init/apply, cluster provisioning, network plugin, Flux, live secrets |
-| VMware | Shared `openstackBootstrapProvider` with vSphere validation/environment | OpenTofu/Kubespray-style infrastructure path and Flux |
-| Baremetal | Shared provider implementation with static-node validation and no cloud credentials | Infrastructure path and Kubernetes initialization without OpenStack/vSphere environment |
-| Kind | `kindBootstrapProvider` in `kind_bootstrap_provider.go` | Kind create/readiness, local Flux/Gitea integration, live secret reconciliation |
-| Magnum | `newMagnumBootstrapProvider` in `magnum_bootstrap_provider.go`, backed by the standalone `internal/cloud/magnum` client | Create/poll a Magnum-managed cluster from an existing cluster template, then securely write kubeconfig; no OpenTofu step |
-
-Provider routing and capability distinctions are detailed in [Providers](providers.md). Resumable state and distributed operation locks are supported by [Import, operations, and resilience](import-operations-and-resilience.md).
-
-## Destroy and day-2 boundaries
-
-Destroy uses `lifecycleDestroyProvider` implementations; OpenStack has an OpenTofu destroy path, Kind delegates to its cloud/kind lifecycle provider, and Magnum's `newMagnumDestroyProvider` deletes the Magnum-managed cluster through the `internal/cloud/magnum` client. Drift, backup, import, and lock commands use packages outside the lifecycle service and must not be folded into rendering or config loading.
-
-## Cross-module boundaries
-
-- `internal/config/v2` is the input and persistence contract for lifecycle services and the OpenStack provider/storage operations. Provider and storage paths operate on typed v2 values; storage apply adds explicit remote-action and recovery sequencing.
-- `internal/core/paths` resolves organization/cluster identifiers and runtime paths.
-- `internal/core/validation` provides shared validation primitives.
-- `internal/security` supplies sanitized command execution and audit components.
-- `internal/resilience` protects mutating operations with locks, retries, and circuit breakers.
+- Keep command flag parsing in `cmd/` and lifecycle orchestration in `internal/cluster`; do not put provider API calls or template writes in handlers.
+- Preserve bootstrap step IDs, ordering, persisted state version, resume semantics, sanitized command execution, and log paths.
+- Preserve the distinction between `Validate`, `ValidateForGeneration`, and deployment validation; a successful config read is not proof that bootstrap is safe.
+- Changes to `PathResolver`, v2 config, generation, or provider routing require checking init, validate, generate, deploy, destroy, and integration tests.
+- Keep day-2 drift, backup, import, and locks out of the generation transaction.
 
 ## Related maps
 
-- [Config system](config-system.md)
-- [OpenStack provider and storage operations](openstack-provider-storage-operations.md)
-- [GitOps engine](gitops-engine.md)
-- [Providers](providers.md)
-- [Secrets management](secrets-management.md)
+[Config system](config-system.md) · [GitOps engine](gitops-engine.md) · [Providers](providers.md) · [OpenStack operations](openstack-provider-storage-operations.md) · [Import and resilience](import-operations-and-resilience.md)

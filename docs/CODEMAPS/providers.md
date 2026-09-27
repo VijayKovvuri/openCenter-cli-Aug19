@@ -3,72 +3,70 @@ last_updated: 2026-09-25
 id: providers-map
 title: "Explain Provider Capability Boundaries"
 sidebar_label: Providers
-description: Distinguishes provider configuration, generation, bootstrap, drift detection, and destruction capabilities without conflating planned providers with supported implementations.
+description: "Capability and routing map separating configuration acceptance, GitOps generation, lifecycle bootstrap, drift, and storage operations."
 doc_type: explanation
 audience: "contributors, maintainers, operators"
 tags: [providers, openstack, magnum, vmware, baremetal, kind]
 ---
 # Providers
 
-Provider support is split across three boundaries: configuration and generation in `internal/config/v2` and `internal/gitops`, lifecycle bootstrap in `internal/cluster`, and cloud-state drift interfaces in `internal/cloud`. A provider may participate in one boundary without implementing another.
+Provider support is not one interface. Configuration validation, rendered infrastructure, lifecycle bootstrap/destroy, drift, OpenStack planning, and object storage provisioning have separate symbols and dependencies.
+
+## Feature → subsystem → symbol
+
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| CLI availability gate | command policy / `cmd` | [`cmd/provider_availability.go`](../../cmd/provider_availability.go) → `checkProviderAvailability` | Called by init/generate/deploy; command-surface and lifecycle tests in [`cmd/ga_command_surface_test.go`](../../cmd/ga_command_surface_test.go) |
+| Config provider validation | v2 config / `internal/config/v2` | [`internal/config/v2/validator.go`](../../internal/config/v2/validator.go) → `ValidateProvider`; [`internal/config/v2/readiness.go`](../../internal/config/v2/readiness.go) → `ValidateReadiness` | Schema-valid names can exceed reachable CLI capabilities; [`internal/config/v2/provider_test.go`](../../internal/config/v2/provider_test.go) |
+| Lifecycle bootstrap | cluster / `internal/cluster` | [`internal/cluster/bootstrap_provider.go`](../../internal/cluster/bootstrap_provider.go) → `lifecycleBootstrapProvider.BuildSteps`; [`internal/cluster/bootstrap_service.go`](../../internal/cluster/bootstrap_service.go) → provider selection | Security command runner, config, paths, persisted state; provider tests |
+| OpenStack/VMware/Baremetal bootstrap | infrastructure provider | [`internal/cluster/bootstrap_provider_infra.go`](../../internal/cluster/bootstrap_provider_infra.go) → `newOpenStackBootstrapProvider`, `BuildSteps` | OpenTofu/Kubespray-style commands and provider environment |
+| Kind bootstrap | local cloud provider | [`internal/cluster/kind_bootstrap_provider.go`](../../internal/cluster/kind_bootstrap_provider.go) → `newKindBootstrapProvider`, `BuildSteps`; [`internal/cloud/kind/provider.go`](../../internal/cloud/kind/provider.go) | Kind runtime and kubeconfig; [`cmd/kind_provider_workflow_test.go`](../../cmd/kind_provider_workflow_test.go) |
+| Magnum bootstrap/destroy | managed cloud provider | [`internal/cluster/magnum_bootstrap_provider.go`](../../internal/cluster/magnum_bootstrap_provider.go) → `newMagnumBootstrapProvider`, `BuildSteps`; [`internal/cluster/magnum_destroy_provider.go`](../../internal/cluster/magnum_destroy_provider.go) | [`internal/cloud/magnum/provider.go`](../../internal/cloud/magnum/provider.go), existing cluster template; [`internal/cluster/magnum_lifecycle_test.go`](../../internal/cluster/magnum_lifecycle_test.go) |
+| Drift capability | cloud registry / `internal/cloud` | [`internal/cloud/factory.go`](../../internal/cloud/factory.go) → `CloudProvider`, `CloudProviderFactory`, `NewCloudProviderFactory` | OpenStack/VMware implementations can register; lifecycle deploy providers are outside this factory; [`internal/cloud/factory_test.go`](../../internal/cloud/factory_test.go) |
+| Provider plan | OpenStack operation | [`internal/cluster/provider/openstack/service.go`](../../internal/cluster/provider/openstack/service.go) → `Plan` | Typed candidate config + read-only `DiscoverySnapshot`; no remote mutation |
+| Storage plan/apply | OpenStack operation | [`internal/cluster/storage/openstack/service.go`](../../internal/cluster/storage/openstack/service.go) → `Plan`, `Apply`; [`internal/cloud/openstack/storage.go`](../../internal/cloud/openstack/storage.go) → `StorageAdapter` | One service, remote container/credential actions, typed persistence/recovery |
 
 ## Capability matrix
 
-| Provider | Config/generate | Bootstrap/deploy | Drift provider | Provider/storage operations | Current boundary |
-|---|---:|---:|---:|---:|---|
-| OpenStack | Yes | Yes | Yes | Yes | `internal/cluster/provider/openstack`, `internal/cluster/storage/openstack`, `internal/cloud/openstack`, shared infrastructure bootstrap, OpenTofu |
-| Magnum | Yes | Yes | No | No | `internal/cloud/magnum` (standalone Magnum API client) plus `internal/cluster/magnum_bootstrap_provider.go`, `magnum_destroy_provider.go`, `magnum_configure_orchestrator.go`; supported through `cluster init --type magnum`; configuration at `opencenter.infrastructure.cloud.magnum`; no OpenTofu or drift implementation |
-| VMware/vSphere | Yes | Yes | Yes | No | `internal/cloud/vmware`, shared infrastructure bootstrap with vSphere credentials |
-| Baremetal | Yes | Yes | No cloud drift implementation | No | Shared infrastructure bootstrap with static-node validation; no OpenStack/vSphere credentials |
-| Kind | Yes | Yes | No | No | `internal/cloud/kind` lifecycle plus `kindBootstrapProvider`; local development integration |
-| AWS | Yes (schema and validator accept it; `internal/cluster/bootstrap_service.go` has a latent Terraform-based step path) | Blocked at the CLI layer | Not registered as a supported drift provider (no `internal/cloud/aws` package) | No | Planned/unavailable to end users |
-| GCP | Yes (schema and validator accept it; same latent bootstrap path as AWS) | Blocked at the CLI layer | Not registered as a supported drift provider (no `internal/cloud/gcp` package) | No | Planned/unavailable to end users |
-| Azure | Yes (schema and validator accept it; same latent bootstrap path as AWS) | Blocked at the CLI layer | Not registered as a supported drift provider (no `internal/cloud/azure` package) | No | Planned/unavailable to end users |
+| Provider | v2 config/readiness | Lifecycle path | Drift registry | OpenStack provider/storage ops |
+|---|---:|---|---:|---:|
+| OpenStack | yes | shared infrastructure provider | implementation-dependent | yes |
+| VMware/vSphere | yes | shared infrastructure provider | provider implementation | no |
+| Baremetal | yes | shared infrastructure provider with static-node checks | no registered cloud implementation | no |
+| Kind | yes | Kind provider | no | no |
+| Magnum | yes | dedicated Magnum API provider | no | no |
+| AWS/GCP/Azure | schema/validator acceptance exists | CLI availability gate rejects | no registered implementation | no |
 
-`internal/config/v2/readiness.go` lists `openstack, aws, gcp, azure, baremetal, vsphere, vmware, kind, magnum` as schema-valid provider strings, and `internal/config/v2/provider.go` has a real validator for each of `openstack`/`aws`/`gcp`/`azure`. `internal/cluster/bootstrap_service.go` even contains a `case "aws", "gcp", "azure":` branch that builds real `make terraform` / `terraform apply` bootstrap steps. None of this is reachable through the CLI: `cmd/provider_availability.go:checkProviderAvailability` is called from `cluster init`, `cluster generate`, and `cluster deploy` and unconditionally rejects `aws`, `gcp`, and `azure` with "provider ... is planned for a future release and not yet available. Supported providers: openstack, vmware, kind, baremetal". That availability-error text has an incomplete Supported providers list: it omits Magnum, which is supported through `cluster init --type magnum`; this is an error-message omission, not a Magnum availability limitation. Treat the internal aws/gcp/azure code paths as unused scaffolding, not a supported capability.
+The final row is intentionally not user support: config acceptance or latent bootstrap code does not bypass [`checkProviderAvailability`](../../cmd/provider_availability.go). Treat unreachable branches as scaffolding until the command gate, provider implementation, and tests all make them reachable.
 
-## Drift interface
+## Actual routing paths
 
-`internal/cloud.CloudProvider` defines:
-
-```go
-GetCurrentState(ctx, cfg) (*InfrastructureState, error)
-DetectDrift(ctx, desired, actual) (*DriftReport, error)
-ReconcileDrift(ctx, drift) error
+```text
+cluster init/generate/deploy
+  -> checkProviderAvailability
+  -> lifecycle service
+       -> provider.BuildSteps
+            -> sanitized external commands or cloud client
+cluster drift
+  -> CloudProviderFactory.GetProvider
+  -> CloudProvider.GetCurrentState / DetectDrift / ReconcileDrift
+cluster provider openstack plan/apply
+  -> profile -> ProfileDiscovery.DiscoverWithOptions (reads only)
+  -> provider/openstack.Plan -> validate -> optional local persistence
+cluster service storage plan/apply
+  -> storage/openstack.ValidateOptions
+  -> StorageAdapter.Preflight -> Plan
+  -> Apply: ensure container -> credential -> validate -> backup/atomic persist -> revoke old credential
 ```
 
-`CloudProviderFactory` is a registry for drift-capable implementations. It is separate from lifecycle deploy providers: Kind deployment is wired directly into cluster lifecycle, while OpenStack and VMware expose provider APIs for state comparison and reconciliation.
+## Safe-change boundaries
 
-OpenStack provider and storage operations are separate from the `CloudProvider` drift interface and lifecycle deployment. Provider plan/apply uses `internal/cloud/openstack` read-only discovery and local typed persistence. Storage plan/apply uses the storage adapter for explicit container and credential actions for one service, then persists typed configuration with recovery semantics. Neither operation provisions the cluster itself.
-
-## Bootstrap routing
-
-`internal/cluster/bootstrap_provider.go` defines the lifecycle provider contract:
-
-```go
-BuildSteps(cfg, clusterPaths, opts) ([]bootstrapStep, error)
-```
-
-`openstackBootstrapProvider` is shared by OpenStack, VMware, and Baremetal. `buildProviderBootstrapEnvironment` extracts only the credentials relevant to the selected provider and validates prerequisites. `kindBootstrapProvider` handles Kind-specific create/readiness and local Flux steps. `newMagnumBootstrapProvider` (in `internal/cluster/magnum_bootstrap_provider.go`) has a separate managed-provider lifecycle built on `internal/cloud/magnum`: deploy creates and polls a cluster from an existing Magnum cluster template, then securely writes kubeconfig; `newMagnumDestroyProvider` deletes the Magnum cluster. Magnum does not invoke OpenTofu. Bootstrap state makes these ordered plans resumable through `--step` and `--from-step`.
-
-## Supporting packages
-
-| Package | Boundary |
-|---|---|
-| `internal/credentials` | Extract provider credentials from validated configuration; it does not deploy resources |
-| `internal/tofu` | Invoke OpenTofu/Terraform for infrastructure provisioning where the lifecycle path requires it |
-| `internal/cloud/openstack` | `clouds.yaml` profile loading, read-only provider discovery, storage preflight, and credential/container adapters |
-| `internal/cloud/magnum` | Standalone Magnum API client (create/get/wait-visible/wait-ready/export-kubeconfig/delete/wait-deleted a Magnum-managed cluster); Gophercloud v1's Magnum operations don't accept a context, so the client checks cancellation before and after each call and re-authenticates its own `ProviderClient` per request group |
-| `internal/cluster/provider/openstack` | Typed provider planning and local atomic persistence with no remote actions |
-| `internal/cluster/storage/openstack` | One-service storage mappings, credential planning, remote-action sequencing, and recovery-aware persistence |
-| `internal/cloud/vmware` | vSphere state and drift implementation |
-| `internal/cloud/kind` | Kind create/delete/readiness and kubeconfig operations |
-| `internal/cluster/orchestration` | Guided provider configuration and capability handlers |
-| `internal/localdev` | Local Kind/Gitea/Flux workflow services, not a cloud provider abstraction |
+- Do not equate v2 provider strings with reachable deployment capability; update availability gates, routing, implementation, and tests together.
+- Keep `CloudProvider` drift APIs separate from `lifecycleBootstrapProvider` and from OpenStack storage adapters.
+- Bootstrap/destroy commands must use `security.CommandRunner`; provider clients must honor context and avoid leaking credentials.
+- Provider plan is read-only against OpenStack. Storage apply is the only map path here that intentionally performs container/credential mutations and recovery journaling.
+- Magnum owns its managed-cluster API lifecycle and does not acquire an OpenTofu step.
 
 ## Related maps
 
-- [Cluster lifecycle](cluster-lifecycle.md) — bootstrap and destroy callers
-- [OpenStack provider and storage operations](openstack-provider-storage-operations.md) — typed provider planning and explicit storage provisioning
-- [Config system](config-system.md) — provider config and validation
-- [Import, operations, and resilience](import-operations-and-resilience.md) — drift and backup operations
+[Cluster lifecycle](cluster-lifecycle.md) · [OpenStack operations](openstack-provider-storage-operations.md) · [Config system](config-system.md) · [Import and resilience](import-operations-and-resilience.md)

@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - '**/*.md'
+      - '.mise.toml'
+      - 'cmd/docs/**'
+      - 'cmd/docs_drift_test.go'
+      - 'internal/config/v2schema/**'
+      - 'schema/**'
+      - 'hack/scripts/**'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -63,3 +69,7 @@ jobs:
         with:
           files: ${{ steps.changed.outputs.files }}
           fail_on_error: true
+
+      - name: Docs tests
+        shell: bash
+        run: mise run test-docs

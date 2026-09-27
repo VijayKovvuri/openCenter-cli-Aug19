@@ -1,94 +1,34 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-velero
 title: "Velero"
 sidebar_label: Velero
-description: Cluster backup and disaster recovery configuration, storage backends, and secrets.
+description: Velero service configuration, storage validation, secrets, and catalog ownership.
 doc_type: reference
 audience: "operators, platform engineers"
-tags: [velero, backup, disaster-recovery, services]
+tags: [velero, backup, services]
 ---
 
-> **Purpose:** For operators and platform engineers, documents Velero's configuration surface, storage backends, and secrets.
-
-## Overview
-
-Velero provides backup and disaster recovery for Kubernetes cluster resources and persistent volumes.
-
-`storage_type: none` keeps the basic Velero release enabled but disables backup
-storage: no BackupStorageLocation, provider credentials, or backups are
-rendered. Velero remains installed, but it cannot create backups in this mode.
-
-```yaml
-opencenter:
-  services:
-    velero:
-      enabled: true
-      storage_type: none
-```
+> **Evidence:** `internal/config/services/velero.go`, `internal/config/v2/defaults.go`, `internal/services/plugins/velero.go`, `internal/config/services/secrets_validator.go`, `internal/config/services/provider_registry.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
 
-```yaml
-opencenter:
-  services:
-    velero:
-      enabled: true              # default: true
-      namespace: velero           # default: velero
-      backup_bucket:
-      region:
-      s3_endpoint:
-      s3_region:
-      s3_credential_id:
-      s3_force_path_style: false
-      s3_insecure: false
-      storage_type: s3             # default: s3; s3 | swift | gcs | azure | none
-```
+The generated default is enabled in `velero`. `VeleroConfig` embeds `BaseConfig` and adds `backup_bucket`, `region`, S3 endpoint/region/credential/path-style/insecure fields, and `storage_type`.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether Velero is deployed |
-| `namespace` | string | `velero` | Namespace for Velero resources |
-| `backup_bucket` | string | — | Backup bucket name; required by the plugin validator when enabled |
-| `region` | string | — | Backup region |
-| `s3_endpoint` | string | — | S3-compatible endpoint URL |
-| `s3_region` | string | — | S3 region |
-| `s3_credential_id` | string | — | OpenStack EC2 credential ID |
-| `s3_force_path_style` | bool | `false` | Force S3 path-style addressing |
-| `s3_insecure` | bool | `false` | Allow insecure (HTTP) connections |
-| `storage_type` | string | `s3` | `s3` \| `swift` \| `gcs` \| `azure` \| `none` |
+The type-level metadata documents `s3`, `swift`, `gcs`, `azure`, and `none`, with `s3` as default. The provider registry selects `s3` for Velero for every listed infrastructure provider and accepts `none` in its compatibility matrix.
 
-### Validation
+## Runtime and secrets
 
-`internal/services/plugins/velero.go` (dead-code validator; see [Platform services architecture](../platform-services.md)) requires `backup_bucket` when enabled unless `storage_type: none` is selected. `none` keeps the basic Velero deployment enabled but disables backup storage, provider credentials, and backups by omitting its BackupStorageLocation, provider, and credentials.
-
-## Secrets
-
-The `internal/config/services/provider_registry.go` compatibility matrix picks a default `storage_type` from the infrastructure provider (`s3` for AWS/bare-metal/vSphere, `swift` for OpenStack, `gcs` for GCP, `azure` for Azure). `schema/opencenter-v2.schema.json` defines:
-
-For `storage_type: none`, the service-specific credentials are not needed or
-consumed. For an object-storage backend, the schema defines:
-
-```yaml
-secrets:
-  velero:
-    access_key_id:
-    secret_access_key:
-```
-
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
+The plugin requires `backup_bucket` when enabled unless `storage_type` is `none`. For `none`, the plugin returns without the bucket check. `VeleroSecrets` declares access and secret keys; the conditional mapping also records Swift, GCS, and Azure credential paths for their respective storage values.
 
 ## Rendering
 
-`velero` has no dedicated YAML descriptor; it is rendered through the built-in render catalog with an extra rendering-order dependency on its own override values and an override Kustomization dependency on `sources` and `velero-namespace`.
+The catalog uses namespace stage `velero`, base path `applications/base/services/velero`, an extra `velero-override` stage, and override dependencies `sources` and `velero-namespace`. No explicit service descriptor is present.
 
-## CLI commands
+## Commands
 
 ```bash
-opencenter cluster service enable velero --param="backup_bucket=my-cluster-backups"
+opencenter cluster service enable velero
 opencenter cluster service disable velero
-opencenter cluster service status
 opencenter cluster service options velero
 ```

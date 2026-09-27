@@ -21,15 +21,15 @@ This page explains *why* the system is built this way, for architects and operat
 openCenter follows a **configuration-first, GitOps-native** architecture where a single YAML file drives the entire cluster lifecycle. The system transforms declarative configuration into production infrastructure through multiple layers of abstraction.
 
 ```
-Configuration File (YAML)
+Cluster Configuration (v2 YAML)
     ↓
 Validation Engine (Schema + Business Rules)
     ↓
-Template Engine (Go templates + Sprig)
+GitOps Planner and Renderers
     ↓
 GitOps Repository (Infrastructure + Applications)
     ↓
-Provisioning Layer (Terraform/Kubespray)
+Provider-specific lifecycle (OpenTofu/Kubespray, Kind, or Magnum)
     ↓
 Production Cluster (Kubernetes + Services)
 ```
@@ -40,21 +40,23 @@ Production Cluster (Kubernetes + Services)
 
 **Purpose:** Load, validate, and manage cluster configurations.
 
-**Design:** The configuration manager uses a **5-stage loading pipeline** (in `internal/config/v2/loader.go`):
+**Design:** The configuration manager uses a six-step loading pipeline (in `internal/config/v2/loader.go`):
 
 1. **Parse YAML** -- Decode raw YAML into intermediate representation
 2. **Normalize** -- Canonicalize provider names, resolve aliases
 3. **Resolve References** -- Expand `${ref:path}`, `${env:VAR}`, `${file:path}` with dependency graph and cycle detection
 4. **Apply Defaults** -- Hydrate empty fields from the provider default map in `internal/config/v2/defaults.go`
-5. **Validate** -- Schema + business rules + provider + deployment + services checks
+5. **Validate** -- schema, business rules, provider/deployment rules, and service checks
+6. **Freeze** -- marks the result ready for use (Go does not enforce immutability)
 
-Configuration precedence (highest to lowest):
-
-1. Command-line flags
-2. Environment variables
-3. Cluster config file
-4. CLI settings file (`~/.config/opencenter/config.yaml`)
-5. Built-in defaults
+There are two distinct precedence systems. The v2 loader hydrates a loaded
+cluster file with provider/region defaults without overwriting explicit fields;
+`${env:VAR}` references are resolved only when the configuration explicitly
+uses that reference syntax. The `cluster init`/`cluster set` flag merger uses,
+from lowest to highest precedence, built-in defaults, the existing file,
+template-derived values, and CLI overrides. CLI settings are inputs to initial
+default construction and path resolution, not a higher-precedence replacement
+for fields in an already loaded cluster config.
 
 **Why this design:** The pipeline ensures every config is fully resolved and validated before use. Reference resolution with topological sort prevents circular dependencies. Hydration fills gaps without overwriting explicit values.
 
@@ -69,7 +71,8 @@ Configuration precedence (highest to lowest):
 1. **Schema Validation:** JSON schema compliance (structure, types, formats)
 2. **Business Rules:** Cross-field dependencies (e.g., VRRP IP required when Octavia disabled)
 3. **Provider Validation:** Provider-specific constraints (image IDs, flavors, networks)
-4. **Connectivity Validation:** API reachability and credential verification (optional)
+4. **Online checks:** API reachability and provider discovery are optional and
+   are run by validation service online mode, not by every v2 load.
 
 **Why this design:** Catch errors early (fail fast) with increasingly specific checks. Schema validation is fast and catches 80% of errors. Business rules catch logical inconsistencies. Provider validation catches deployment-time failures before provisioning.
 
@@ -90,7 +93,7 @@ Configuration precedence (highest to lowest):
 
 **Why this design:** Templates are version-controlled with the CLI, ensuring consistency. Embedding eliminates external dependencies. Sprig provides rich template functions without custom code.
 
-**Trade-offs:** Templates are less flexible than code but more maintainable. Changes require CLI rebuild, but this ensures tested combinations.
+**Trade-offs:** Templates are less flexible than code but more maintainable. Embedded templates are versioned and distributed with the CLI binary, keeping the rendered-resource source aligned with that binary.
 
 **Evidence:** `internal/gitops/copy.go`, `internal/template/`
 
@@ -101,18 +104,19 @@ Configuration precedence (highest to lowest):
 **Design:** Standardized directory layout with Kustomize overlays:
 
 ```
-<git_dir>/
-├── applications/
-│   └── overlays/<cluster>/
-│       ├── flux-system/          # FluxCD bootstrap
-│       ├── services/              # Platform services
-│       └── managed-services/      # Customer applications
-└── infrastructure/
-    └── clusters/<cluster>/
-        ├── main.tf                # Terraform/OpenTofu
-        ├── inventory/             # Kubespray Ansible
-        └── kubeconfig.yaml        # Cluster access
+<clusters-dir>/
+├── blueprints/<organization>/<cluster>/<cluster>-config.yaml  # local input
+├── gitops/<organization>/                                     # Git repository
+│   ├── applications/overlays/<cluster>/                       # Flux/application output
+│   └── infrastructure/clusters/<cluster>/                     # provider output
+├── state/<organization>/<cluster>/                            # kubeconfig/inventory/runtime state
+└── secrets/<organization>/<cluster>/                          # Age and SSH key material
 ```
+
+The GitOps tree contains generated repository content; kubeconfig, inventory,
+and private keys are deliberately in separate zones. OpenTofu materialization
+is skipped for Kind and Magnum, and lifecycle implementation differs by
+provider.
 
 **Why this design:** Separation of infrastructure (Terraform) and applications (Kubernetes manifests) allows different teams to manage different layers. Kustomize overlays enable cluster-specific customization without duplicating base manifests.
 
@@ -149,25 +153,25 @@ Key management features:
 
 **Evidence:** `internal/sops/`, `internal/secrets/`, `internal/security/audit_logger.go`
 
-### Dependency Injection Container
+### Dependency Injection and Runtime Wiring
 
 **Purpose:** Manage service dependencies and lifecycle.
 
-**Design:** Two approaches coexist:
+**Design:** Two approaches coexist, with different scope:
 
 1. **`App` struct** (preferred) -- Explicit constructor chaining with typed fields. Built via `di.NewApp(baseDir)`.
-2. **`DIContainer`** (legacy) -- Reflection-based resolution matching constructor parameter types to registered return types.
+2. **`DIContainer`** (legacy/compatibility) -- Reflection-based resolution matching constructor parameter types to registered return types. `SetupContainer` registers only a partial set of components; it is not the complete runtime graph.
 
 Key properties:
 
 * Services registered as factory functions (provider pattern)
 * Dependencies resolved by type matching
-* Singletons initialized eagerly via `Initialize()`
+* Legacy-container singletons are initialized eagerly via `Initialize()`; the typed `App` is built by explicit constructor chaining.
 * Circular dependencies detected via topological ordering
 * Thread-safe after initialization (`sync.RWMutex`)
 * Graceful shutdown calling `Shutdown()` on components
 
-**Why this design:** Testability (mock dependencies), flexibility (swap implementations), and explicit dependencies (no global state). The typed `App` struct provides compile-time safety while the reflection container supports dynamic resolution.
+**Why this design:** Testability (mock dependencies), flexibility (swap implementations), and explicit dependencies. The typed `App` struct provides compile-time wiring for the current command path, while the reflection container preserves older callers and tests. This is a partial migration, not a claim that all packages are injected.
 
 **Evidence:** `internal/di/`, `cmd/root.go`
 
@@ -197,11 +201,11 @@ Key packages by responsibility:
 | --- | --- |
 | CLI | `cmd/` (Cobra commands), `internal/ui` (prompts), `internal/plugins` (external plugins) |
 | Domain | `internal/cluster` (lifecycle), `internal/secrets` (secrets mgmt), `internal/operations` (drift, backup) |
-| Config | `internal/config/v2` (authoritative typed model, loader, defaults, validation), `internal/config` (CLI settings and compatibility re-exports), `internal/config/services` (service registry) |
-| GitOps | `internal/gitops` (rendering, templates, atomic output), `internal/template` (engine) |
+| Config | `internal/config/v2` (authoritative typed model, loader, defaults, validation), `internal/config` (CLI settings and compatibility re-exports), `internal/config/services` (typed service configs and enforced service dependencies) |
+| GitOps | `internal/gitops` (live rendering, templates, atomic output), `internal/template` (supporting template engine) |
 | Infra | `internal/cloud`, `internal/cloud/openstack`, `internal/cloud/vmware`, `internal/cloud/kind`, `internal/cloud/magnum` (providers), `internal/provision` (embedded provisioning templates, including Ansible/Kubespray inventory assets), `internal/tofu` (OpenTofu) |
 | Security | `internal/security` (audit, masking, sanitization), `internal/sops` (encryption) |
-| Foundation | `internal/di` (DI container), `internal/core` (paths, validation), `internal/util` (shared), `internal/resilience` (locks, retry) |
+| Foundation | `internal/di` (DI container), `internal/core` (paths, validation), `internal/util` (shared), `internal/resilience` (locks, retry); `internal/services` is a separate, unwired service-plugin subsystem |
 
 There is no dedicated `internal/ansible` package. Kubespray is invoked as an embedded `local-exec` provisioner inside the generated OpenTofu module (part of the `opentofu-apply` bootstrap step), using inventory templates embedded via `internal/provision` and `internal/gitops/templates/infrastructure-cluster-template/`; see `internal/cluster/bootstrap_provider_infra.go`.
 
@@ -228,7 +232,9 @@ There is no dedicated `internal/ansible` package. Kubespray is invoked as an emb
 
 ### GitOps Native
 
-**Pattern:** Git as single source of truth, FluxCD reconciles desired state.
+**Pattern:** Git is the source for generated cluster/platform state; FluxCD
+reconciles the generated GitOps tree. Local blueprints and runtime state remain
+outside that repository.
 
 **Benefits:**
 
@@ -294,7 +300,7 @@ There is no dedicated `internal/ansible` package. Kubespray is invoked as an emb
 
 **Constraints:**
 
-* Changes require rebuild
+* Embedded resources are packaged into the binary and versioned with that binary
 * Binary size increases
 * Cannot customize without forking
 
@@ -344,9 +350,11 @@ There is no dedicated `internal/ansible` package. Kubespray is invoked as an emb
 
 ### 5. Security First
 
-**Principle:** Secure by default, no plaintext secrets.
+**Principle:** Secure by default, with secret-bearing generated artifacts
+handled by SOPS/Age flows.
 
-**Example:** SOPS encryption required for secrets, no option to disable.
+**Example:** SOPS/Age encryption is used for generated secret-bearing artifacts
+before they are promoted to the GitOps tree.
 
 **Rationale:** Prevent accidental exposure, enforce best practices, compliance requirements.
 
@@ -357,15 +365,15 @@ There is no dedicated `internal/ansible` package. Kubespray is invoked as an emb
 ### Initialization Flow
 
 ```
-User: opencenter cluster init my-cluster
+User: opencenter cluster init my-cluster --org my-org
     ↓
 CLI: Load defaults from internal/config/v2/defaults.go
     ↓
-CLI: Apply CLI defaults from ~/.config/opencenter/config.yaml
+CLI: Resolve zone paths and apply selected CLI settings/defaults
     ↓
 CLI: Generate configuration file
     ↓
-CLI: Write to ~/.config/opencenter/clusters/<org>/.my-cluster-config.yaml
+CLI: Write to <blueprints-dir>/my-org/my-cluster/my-cluster-config.yaml
     ↓
 User: Configuration ready for editing
 ```
@@ -373,7 +381,7 @@ User: Configuration ready for editing
 ### Validation Flow
 
 ```
-User: opencenter cluster validate
+User: opencenter cluster validate my-cluster
     ↓
 Validation Engine: Load configuration
     ↓
@@ -383,7 +391,7 @@ Business Rules Validator: Check cross-field dependencies
     ↓
 Provider Validator: Check provider-specific constraints
     ↓
-Connectivity Validator: Check API reachability (optional)
+Online validation (when requested): Check reachability and provider discovery
     ↓
 CLI: Report validation results
 ```
@@ -391,7 +399,7 @@ CLI: Report validation results
 ### Setup Flow
 
 ```
-User: opencenter cluster generate
+User: opencenter cluster generate my-cluster
     ↓
 Template Engine: Load embedded templates
     ↓
@@ -399,11 +407,11 @@ Template Engine: Inject configuration values
     ↓
 Template Engine: Render to GitOps repository
     ↓
-SOPS Manager: Encrypt secrets
+SOPS Manager: Encrypt secret-bearing generated artifacts
     ↓
-Git: Initialize repository
+GitOps workspace: Promote generated output with ownership checks
     ↓
-CLI: Repository ready for commit
+CLI: Repository ready for the operator to commit and push
 ```
 
 ### Bootstrap Flow
@@ -411,9 +419,9 @@ CLI: Repository ready for commit
 ```
 User: opencenter cluster deploy
     ↓
-Terraform: Provision infrastructure (VMs, networks, storage)
+Provider lifecycle: provision infrastructure where supported
     ↓
-Kubespray: Deploy Kubernetes (control plane, workers, CNI)
+Kubespray/Kind/Magnum: provider-specific Kubernetes bring-up
     ↓
 FluxCD: Bootstrap GitOps (install controllers, create sources)
     ↓
@@ -424,40 +432,27 @@ CLI: Cluster ready
 
 ## Scalability Considerations
 
-### Configuration Size
-
-**Current:** Single YAML file (typically 500-2000 lines)
-
-**Limits:** No hard limit, but large files are harder to manage
-
-**Mitigation:** Use CLI defaults for common values, reference external files for large data (SSH keys, certificates)
-
-### Cluster Count
-
-**Current:** Organization-based directory structure supports unlimited clusters
-
-**Limits:** Filesystem limits (millions of files)
-
-**Mitigation:** Archive old clusters, use separate organizations for different teams
-
-### Service Count
-
-**Current:** 20+ services enabled by default
-
-**Limits:** Kubernetes resource limits (pods, services, etc.)
-
-**Mitigation:** Disable unnecessary services, use larger nodes, scale horizontally
+The repository defines configuration, filesystem-layout, and service-rendering
+contracts, but does not publish general capacity maxima. Capacity planning
+therefore remains dependent on the selected provider, Kubernetes, and the
+services enabled in the configuration. See the
+[Platform Services Architecture](../reference/platform-services.md) for the
+live service model rather than inferring capacity from package names or default
+maps.
 
 ## Extension Points
 
 ### Custom Providers
 
-Add new infrastructure providers by implementing provider interface:
+Provider support is split into independent extension points:
 
-1. Create provider adapter in `internal/cloud/<provider>/`
-2. Implement provisioning logic in `internal/provision/<provider>/`
-3. Add provider-specific validation
-4. Update schema with provider configuration
+1. Add typed configuration and validation under `internal/config/v2/`.
+2. Add guided configuration and lifecycle bootstrap/destroy dispatch under
+   `internal/cluster/` when the provider owns those operations.
+3. Add an isolated `internal/cloud/<provider>/` client only when the provider
+   API needs one.
+4. Decide separately whether to implement the `internal/cloud.CloudProvider`
+   drift interface; lifecycle support does not imply drift support.
 
 **Evidence:** `internal/cloud/`, `internal/provision/`
 
@@ -470,7 +465,11 @@ Add new platform services by:
 3. Create service manifests in openCenter-gitops-base
 4. Update documentation
 
-See [Plugin Internal Services](plugin-internal-services.md) for the full worked example (cert-manager) and [Adding Services](../contributing/adding-services.md) for the contributor contract.
+See [Platform Services Architecture](../reference/platform-services.md) for the
+live service configuration and rendering model, and [Adding Services](../contributing/adding-services.md)
+for the contributor contract. The `internal/services` plugin interfaces and
+`gitops/stages.ServiceStage` are supporting, unwired APIs rather than the live
+service-generation path.
 
 **Evidence:** `internal/config/services/`, `internal/config/v2/defaults.go`
 
@@ -492,6 +491,10 @@ Extend CLI with external plugins:
 2. Place in PATH
 3. CLI discovers and loads automatically
 
+Production starts with `NewBuiltinRootCmd` and then attaches external plugins.
+The documentation generator also starts with `NewBuiltinRootCmd`, so generated
+command reference pages exclude external plugins.
+
 **Evidence:** `internal/plugins/`, `cmd/plugins.go`
 
 ## Common Misconceptions
@@ -500,9 +503,9 @@ Extend CLI with external plugins:
 
 **Reality:** openCenter orchestrates multiple tools (Terraform, Kubespray, FluxCD) and provides validation, secrets management, and GitOps scaffolding. Terraform is one component.
 
-### "Configuration changes require cluster rebuild"
+### "Configuration changes have one universal lifecycle"
 
-**Reality:** Most configuration changes can be applied by updating the configuration file and running `opencenter cluster generate`. Only provider changes (OpenStack → VMware) require rebuild.
+**Reality:** The repository provides separate validation, generation, and deployment commands. The applicable workflow depends on the configuration change and selected provider; consult [Configuration Lifecycle](configuration-lifecycle.md) rather than assuming a universal in-place update or rebuild rule.
 
 ### "GitOps means no manual changes"
 
@@ -510,7 +513,9 @@ Extend CLI with external plugins:
 
 ### "All secrets must be in configuration file"
 
-**Reality:** Secrets can be in configuration file (encrypted with SOPS) or external secret providers (planned feature). Configuration file is convenient but not required.
+**Reality:** Secret inputs and generated secret-bearing artifacts follow the
+implemented SOPS/Age flows. Do not infer an external-secret-provider
+integration from this repository alone.
 
 ### "openCenter only works with OpenStack"
 

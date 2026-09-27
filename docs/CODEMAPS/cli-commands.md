@@ -1,88 +1,56 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: cli-commands-map
 title: "Map the Built-in CLI Commands"
 sidebar_label: CLI Commands
-description: Describes the deterministic built-in Cobra tree, command registration ownership, and the production-only external plugin boundary.
+description: "Execution map for built-in Cobra registration, command handlers, typed services, and the production-only plugin boundary."
 doc_type: explanation
 audience: "contributors, maintainers, CLI integrators"
 tags: [cli, cobra, commands, plugins, runtime]
 ---
 # CLI commands
 
-The production executable starts with `cmd.NewBuiltinRootCmd()` and adds external plugins afterward. The tools-tagged reference generator also receives `NewBuiltinRootCmd()`, so generated command pages cover built-ins only; external plugins are discovered only at production runtime.
+## Feature → subsystem → symbol
 
-## Built-in tree
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| Process execution | process / `cmd` | [`main.go`](../../main.go) → `main`; [`cmd/root.go`](../../cmd/root.go) → `ExecuteWithContext` | `di.SetupContainer`, `di.NewApp`, Cobra; [`cmd/root_container_test.go`](../../cmd/root_container_test.go) |
+| Built-in root | command registration / `cmd` | [`cmd/root.go`](../../cmd/root.go) → `NewBuiltinRootCmd`, `addGlobalFlags` | Adds `NewClusterCmd`, `NewSettingsCmd`, `NewSecretsCmd`, `NewPluginsCmd`, `NewVersionCmd`, `NewShellInitCmd`; [`cmd/root_test.go`](../../cmd/root_test.go) |
+| Cluster tree | command registration / `cmd` | [`cmd/cluster.go`](../../cmd/cluster.go) → `NewClusterCmd` | Delegates to per-feature constructors; [`cmd/ga_command_surface_test.go`](../../cmd/ga_command_surface_test.go) |
+| Lifecycle handlers | command orchestration / `cmd` | [`cmd/cluster_init.go`](../../cmd/cluster_init.go) → `newClusterInitCmd`; [`cmd/cluster_generate.go`](../../cmd/cluster_generate.go) → `newClusterGenerateCmd`; [`cmd/cluster_deploy.go`](../../cmd/cluster_deploy.go) → `newClusterDeployCmd`; [`cmd/cluster_destroy.go`](../../cmd/cluster_destroy.go) → `newClusterDestroyCmd` | Resolves `di.GetApp(ctx)` services; [`cmd/cluster_generate_test.go`](../../cmd/cluster_generate_test.go), [`cmd/cluster_deploy_test.go`](../../cmd/cluster_deploy_test.go) |
+| OpenStack provider | explicit operation / `cmd` | [`cmd/cluster_provider_openstack.go`](../../cmd/cluster_provider_openstack.go) → `newClusterProviderOpenStackCmd`, `runClusterProviderOpenStack` | Depends on cloud profile/discovery and typed provider planner; see [OpenStack map](openstack-provider-storage-operations.md) |
+| One-service storage | explicit operation / `cmd` | [`cmd/cluster_service_storage.go`](../../cmd/cluster_service_storage.go) → `newClusterServiceStorageCmd`, `runClusterServiceStorage` | Depends on `storage/openstack.Plan` and `Apply`; [`cmd/cluster_service_storage_test.go`](../../cmd/cluster_service_storage_test.go), [`cmd/task16_storage_contract_test.go`](../../cmd/task16_storage_contract_test.go) |
+| Secrets | command routing / `cmd` | [`cmd/secrets.go`](../../cmd/secrets.go) → `NewSecretsCmd`; [`cmd/secrets_sync.go`](../../cmd/secrets_sync.go) → `newSecretsSyncCmd`, `runClusterSyncSecrets`; [`cmd/secrets_keys.go`](../../cmd/secrets_keys.go) → `NewSecretsKeysCmd` | Backend CRUD, manifest sync, SOPS files, and key lifecycle remain separate; [`cmd/secrets_router_test.go`](../../cmd/secrets_router_test.go) |
+| Import | command orchestration / `cmd` | [`cmd/cluster_import.go`](../../cmd/cluster_import.go) → `newClusterImportCmd` and scan/report/apply constructors | Depends on `internal/importer`; [`cmd/cluster_import_test.go`](../../cmd/cluster_import_test.go) |
+| External plugins | extension boundary / `internal/plugins` | [`internal/plugins/loader.go`](../../internal/plugins/loader.go) → `LoadExternalPlugins`, `DiscoverDetailed`, `runExternal` | `security.CommandRunner`, checksum file, PATH/config plugin dirs; [`internal/plugins/loader_test.go`](../../internal/plugins/loader_test.go), [`cmd/plugins_test.go`](../../cmd/plugins_test.go) |
+
+## Actual registration and execution path
 
 ```text
-opencenter
-├── cluster
-│   ├── list, use, active, env, status, describe
-│   ├── init, configure, edit, set, normalize, export
-│   ├── validate, doctor, generate, deploy, destroy
-│   ├── template (hidden), validate-manifests (hidden)
-│   ├── service {enable, disable, status, options, storage {plan, apply}}
-│   ├── pool {add, update, scale, remove, list}
-│   ├── drift {detect, reconcile, schedule}
-│   ├── backup {create, restore, list, delete, schedule}
-│   ├── lock, unlock
-│   ├── import {scan, report, apply}
-│   ├── migrate-layout
-│   └── provider {openstack {plan, apply}}
-├── settings {view, set, get, reset, path, edit, explain, ide}
-├── secrets
-│   ├── login, list, describe, get, set, delete
-│   ├── sync, validate, encrypt, decrypt, status
-│   └── keys {generate, rotate, backup, validate, check, revoke, reconcile, set-primary}
-├── plugins {list}
-├── version
-└── shell-init
+main.main
+  -> cmd.ExecuteWithContext
+       -> pre-parse --config-dir
+       -> initializeApp -> di.NewApp
+       -> context[AppKey, ContainerKey]
+       -> plugins.LoadExternalPlugins(rootCmd)
+       -> rootCmd.ExecuteContext
+            -> PersistentPreRunE -> applyGlobalOptions
+            -> command RunE
+            -> typed service or feature package
 ```
 
-Cobra also supplies the standard `help` and `completion` commands. Hidden commands are registered for internal workflows but are not part of the normal visible surface. Key lifecycle operations live under `secrets keys`; older cluster-level aliases are not part of the registered tree.
+`NewBuiltinRootCmd` is deterministic and is also the input to generated command documentation. Production attaches external executables only inside `ExecuteWithContext`; therefore generated references and tests of the built-in tree must not expect plugins. Built-ins cannot be shadowed by a plugin name. Hidden `cluster template` and `cluster validate-manifests` commands are registered for internal workflows, not the normal GA surface.
 
-## Registration flow
+The registered top-level tree is `cluster`, `settings`, `secrets`, `plugins`, `version`, and `shell-init`; Cobra adds `help` and completion. `NewClusterCmd` owns lifecycle, service/storage, pool, drift, backup, lock, import, layout, and provider subtrees. The exact command-surface assertions live in [`cmd/ga_command_surface_test.go`](../../cmd/ga_command_surface_test.go), not in this prose.
 
-| Stage | Owner | Responsibility |
-|---|---|---|
-| Process start | `main.go` | Set build metadata, resolve cluster directory, create the outer process container |
-| App execution | `cmd/root.go:ExecuteWithContext` | Build `di.NewApp`, create `di.NewAppContainer`, and place both graph values in context |
-| Built-ins | `cmd/root.go:NewBuiltinRootCmd` | Register `cluster`, `settings`, `secrets`, `plugins`, `version`, and `shell-init` |
-| Cluster subtree | `cmd/cluster.go:NewClusterCmd` | Register lifecycle, service, pool, drift, backup, import, lock, provider, and storage commands |
-| OpenStack provider operations | `cmd/cluster_provider_openstack.go` | Load a profile, perform read-only discovery, plan typed provider changes, and persist validated local patches |
-| OpenStack storage operations | `cmd/cluster_service_storage.go` | Plan and apply one service's storage mapping, remote credentials, typed persistence, and recovery |
-| Runtime extensions | `internal/plugins/loader.go` | Discover and attach external `opencenter-*` executables only in production |
-| Execution | Cobra `ExecuteContext` | Parse flags, run command hooks, resolve services, and return errors to `main.go` |
+## Safe-change boundaries
 
-Command implementations remain in `cmd/`; domain behavior belongs in `internal/*`. Commands should resolve typed services through the app graph rather than duplicate config, rendering, or provider logic.
-
-## Global flags
-
-`cmd/root.go` owns the persistent built-in flags:
-
-| Flag | Purpose |
-|---|---|
-| `--config-dir` | Override the configuration directory; it is pre-parsed so runtime plugin discovery sees it |
-| `--log-level` | Set logging level |
-| `--output` | Select supported text, JSON, or YAML output where the command exposes it |
-| `--quiet` | Suppress nonessential human output |
-| `--yes` | Answer confirmations |
-| `--dry-run` | Preview supported mutating operations |
-
-## Boundaries
-
-- `cluster generate` delegates to `internal/cluster.SetupService`; it does not call the supporting `PipelineGenerator` as the live top-level path.
-- `cluster provider openstack plan/apply` performs read-only OpenStack discovery and typed provider planning/persistence. It has no remote mutation capability.
-- `cluster service storage plan/apply` handles one supported service at a time and owns storage preflight, credential/container actions, typed persistence, and recovery; see [OpenStack provider and storage operations](openstack-provider-storage-operations.md).
-- `secrets sync` delegates manifest work to `internal/secrets`; SOPS encryption and key operations are separate concerns.
-- `plugins list` reports discovery; executing a plugin forwards arguments through the security command runner.
-- `cmd/opencenter-local` is a separate executable, not a subcommand of the built-in production tree. See [Runtime extensions and local development](runtime-extensions-and-local-development.md).
+- Keep registration in `cmd/`; keep domain behavior in `internal/*`. A handler should resolve a typed service rather than duplicate config, rendering, or provider logic.
+- Changes to `NewBuiltinRootCmd` affect generated references; changes to `LoadExternalPlugins` affect only production runtime.
+- Preserve global flag pre-parsing: plugin discovery needs `--config-dir` before Cobra hooks and DI initialization.
+- Preserve `DisableFlagParsing` and argument forwarding for plugins, checksum refusal, built-in collision protection, and plugin exit behavior.
+- Provider plan/apply has no remote mutation; storage apply does. Do not merge either into lifecycle deploy or secrets sync.
 
 ## Related maps
 
-- Add a service-storage command mapping only when the service needs object-storage provisioning; follow the [built-in service checklist](../contributing/adding-a-built-in-service.md#5-add-object-storage-support-only-when-needed) and regenerate command references when the tree changes.
-- [DI container](di-container.md) — graph construction and command context
-- [OpenStack provider and storage operations](openstack-provider-storage-operations.md) — typed provider planning and explicit one-service storage provisioning
-- [Cluster lifecycle](cluster-lifecycle.md) — command-to-service workflow
-- [Secrets management](secrets-management.md) — secret command boundaries
-- [Runtime extensions and local development](runtime-extensions-and-local-development.md) — plugin discovery and local executable
+[DI container](di-container.md) · [Cluster lifecycle](cluster-lifecycle.md) · [Providers](providers.md) · [Runtime extensions](runtime-extensions-and-local-development.md) · [Secrets management](secrets-management.md)

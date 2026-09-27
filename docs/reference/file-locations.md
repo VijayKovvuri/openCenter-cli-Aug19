@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: file-locations
 title: "File Locations"
 sidebar_label: File Locations
@@ -19,7 +19,7 @@ Every directory role below is resolved the same way (see [Configuration Preceden
 | Role | Env var | CLI settings key | Default |
 | --- | --- | --- | --- |
 | Config dir | `OPENCENTER_CONFIG_DIR` | `paths.settingsDir` | macOS/Linux: `~/.config/opencenter`; Windows: `%APPDATA%\opencenter` (falls back to `%LOCALAPPDATA%`, then `%USERPROFILE%`, then `/tmp/opencenter`) |
-| CLI settings file | -- | -- | `<config-dir>/config.yaml` |
+| CLI settings file | -- | -- | `<config-dir>/settings.yaml` |
 | Clusters dir | `OPENCENTER_CLUSTERS_DIR` | `paths.clustersDir` | `<config-dir>/clusters` |
 | GitOps dir | `OPENCENTER_GITOPS_DIR` | `paths.gitopsDir` | `<clusters-dir>/gitops` |
 | Blueprints dir | `OPENCENTER_BLUEPRINTS_DIR` | `paths.blueprintsDir` | `<clusters-dir>/blueprints` |
@@ -33,17 +33,20 @@ Every directory role below is resolved the same way (see [Configuration Preceden
 ## Per-cluster layout (org-based)
 
 ```
-<clusters-dir>/<organization>/
-├── .<cluster>-config.yaml         # v2 cluster configuration (dot-prefixed filename)
-├── infrastructure/clusters/<cluster>/     # OpenTofu working directory
-├── applications/overlays/<cluster>/       # rendered GitOps overlay
-├── secrets/
-│   ├── age/keys/<cluster>-key.txt          # SOPS Age private key
-│   └── ssh/<cluster>-<env>-<region>        # cluster SSH keypair
-└── .sops.yaml                              # SOPS creation rules for this org/cluster tree
+<clusters-dir>/
+├── blueprints/<organization>/<cluster>/
+│   └── <cluster>-config.yaml                # v2 cluster configuration
+├── gitops/<organization>/
+│   ├── infrastructure/clusters/<cluster>/   # rendered infrastructure files
+│   ├── applications/overlays/<cluster>/     # rendered GitOps overlay
+│   └── .sops.yaml                            # SOPS rules for this GitOps tree
+├── state/<organization>/<cluster>/          # kubeconfig, inventory, and per-cluster state
+└── secrets/<organization>/<cluster>/
+    ├── age/keys/<cluster>-key.txt            # SOPS Age private key
+    └── ssh/<cluster>                         # cluster SSH keypair
 ```
 
-See [Cluster Init Details](../contributing/cluster-init-details.md) for exactly which of these paths `cluster init` writes into the config (`opencenter.gitops.repository.local_dir`, `infrastructure.ssh.key_path`, `secrets.ssh_key.private`/`.public`, `secrets.sops_age_key_file`, `secrets.sops.age_key_file`).
+See [Cluster Init Details](../contributing/cluster-init-details.md) for exactly which of these paths `cluster init` writes into the config (`opencenter.gitops.repository.local_dir`, `infrastructure.ssh.key_path`, `secrets.ssh_key.private`/`.public`, `secrets.sops_age_key_file`, `secrets.sops.age_key_file`). Legacy co-located layouts are migration inputs, not the canonical paths above.
 
 ## Runtime state and logs
 
@@ -80,4 +83,4 @@ External plugins are discovered as `opencenter-<name>` executables on `PATH` or 
 
 * [Configuration Precedence](configuration-precedence.md) -- the resolution order these paths follow.
 * [Environment Variables](environment-variables.md) -- the full variable list, including non-path variables.
-* [Configuration Schema Reference](configuration-schema.md) -- what's actually stored in `.<cluster>-config.yaml`.
+* [Configuration Schema Reference](configuration-schema.md) -- what's actually stored in `<cluster>-config.yaml`.

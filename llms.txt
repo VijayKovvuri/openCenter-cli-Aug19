@@ -1,174 +1,53 @@
 last_updated: 2026-09-25
 
-# openCenter CLI
+# openCenter CLI repository navigation
 
-> openCenter CLI turns a declarative Kubernetes cluster configuration into validated GitOps assets and provider-specific lifecycle operations. It supports OpenStack, VMware, Baremetal, Magnum (managed OpenStack Kubernetes), and Kind as the current infrastructure providers, with SOPS/Age secrets handling, Flux-oriented repository generation, import tooling, drift/backup operations, and resumable bootstrap.
+This is a concise, repository-local map for code-oriented readers and language
+models. It is not the reader-facing documentation index, a generated command
+reference, or evidence that a hosted documentation site is published.
 
-> Last updated: 2026-09-25.
+## Navigation
 
-This file is a concise navigation guide for code-oriented readers and language models. It is curated repository content, not the published documentation home and not an automatically generated artifact. Use the [documentation home](docs/index.md) for reader-facing docs, the [project README](README.md) for the project entry point, and [docs/README.md](docs/README.md) for the repository map and maintenance rules. Exact command flags belong to the command reference and generated per-command pages.
+- [Project entry point](README.md) — project summary and source-build quick start.
+- [Reader-facing documentation index](docs/index.md) — lifecycle-oriented
+  documentation source index.
+- [Documentation maintenance guide](docs/README.md) — metadata, classification,
+  links, and checks.
+- [CLI command reference](docs/reference/cli-commands.md) — built-in command
+  groups and flags.
+- [Configuration schema](docs/reference/configuration-schema.md) — schema fields
+  and validation surface.
+- [Provider reference](docs/reference/providers.md) — current provider boundary.
+- [File locations](docs/reference/file-locations.md) — configuration and state
+  paths.
+- [Glossary](docs/glossary.md) — terminology used by the repository docs.
 
-## Start here
+## Source-oriented maps
 
-- [Documentation home](docs/index.md) — lifecycle-oriented documentation index.
-- [Documentation README](docs/README.md) — repository layout, frontmatter, editing rules, and site map.
-- [Project README](README.md) — project summary, quick start, and common workflows.
-- [CLI commands reference](docs/reference/cli-commands.md) — current built-in command groups and global flags.
-- [Configuration schema](docs/reference/configuration-schema.md) — schema `2.0`, fields, and validation rules.
-- [Infrastructure providers](docs/reference/providers.md) — current provider capability boundaries.
-- [File locations](docs/reference/file-locations.md) — config, state, cache, secrets, and GitOps paths.
+For package responsibilities and change boundaries, start at the internal
+[CODEMAPS index](docs/CODEMAPS/INDEX.md). Those maps are repository-internal
+explanations, not operator documentation:
 
-## Architecture maps (internal)
-
-The `docs/CODEMAPS/` files are concise architecture explanations for contributors,
-maintainers, and code-oriented agents. They are repository-internal development
-content, not published user documentation. Read the index first; all maps are
-included here deliberately.
-
-- [CODEMAPS index](docs/CODEMAPS/INDEX.md)
 - [CLI commands map](docs/CODEMAPS/cli-commands.md)
-- [OpenStack provider and storage operations map](docs/CODEMAPS/openstack-provider-storage-operations.md)
 - [Cluster lifecycle map](docs/CODEMAPS/cluster-lifecycle.md)
 - [Configuration system map](docs/CODEMAPS/config-system.md)
-- [DI container map](docs/CODEMAPS/di-container.md)
 - [GitOps engine map](docs/CODEMAPS/gitops-engine.md)
 - [Providers map](docs/CODEMAPS/providers.md)
 - [Secrets management map](docs/CODEMAPS/secrets-management.md)
-- [Rendering ownership and secret artifacts map](docs/CODEMAPS/rendering-ownership-and-secret-artifacts.md)
-- [Runtime extensions and local development map](docs/CODEMAPS/runtime-extensions-and-local-development.md)
-- [Import, operations, and resilience map](docs/CODEMAPS/import-operations-and-resilience.md)
+- [Runtime and local development map](docs/CODEMAPS/runtime-extensions-and-local-development.md)
 
-## Verified command capabilities
+## Source of truth pointers
 
-Use an explicit `organization/cluster` identifier where possible.
+- Cobra command registration and help text: `cmd/`.
+- Configuration types, defaults, and validation: `internal/config/` and
+  `schema/`.
+- Provider lifecycle implementations: `internal/cloud/` and `internal/cluster/`.
+- GitOps rendering and ownership: `internal/gitops/`.
+- Secret and SOPS/Age workflows: `internal/secrets/`, `internal/sops/`, and
+  `internal/secretartifacts/`.
+- Tool versions and task commands: `.mise.toml`.
 
-```bash
-opencenter cluster init <name> --org <organization>
-opencenter cluster configure <organization>/<cluster>
-opencenter cluster validate <organization>/<cluster>
-opencenter cluster doctor
-opencenter cluster generate <organization>/<cluster>
-opencenter cluster deploy <organization>/<cluster>
-opencenter cluster destroy <organization>/<cluster>
-```
-
-Configuration and day-2 operations:
-
-```bash
-opencenter cluster list
-opencenter cluster use <organization>/<cluster>
-opencenter cluster active
-opencenter cluster status <organization>/<cluster>
-opencenter cluster describe <organization>/<cluster>
-opencenter cluster set <organization>/<cluster> <path=value>...
-opencenter cluster edit <organization>/<cluster>
-opencenter cluster normalize <organization>/<cluster>
-opencenter cluster export <organization>/<cluster>
-opencenter cluster service enable <service>
-opencenter cluster service disable <service>
-opencenter cluster service status
-opencenter cluster service options <service>
-opencenter cluster pool add <pool>
-opencenter cluster pool update <pool>
-opencenter cluster pool scale <pool>
-opencenter cluster pool remove <pool>
-opencenter cluster pool list
-opencenter cluster drift detect <organization>/<cluster>
-opencenter cluster drift reconcile <organization>/<cluster>
-opencenter cluster drift schedule <organization>/<cluster>
-opencenter cluster backup create <organization>/<cluster>
-opencenter cluster backup list <organization>/<cluster>
-opencenter cluster backup restore <backup-id>
-opencenter cluster backup delete <backup-id>
-opencenter cluster backup schedule <organization>/<cluster>
-opencenter cluster lock <organization>/<cluster>
-opencenter cluster unlock <organization>/<cluster>
-opencenter cluster import scan --repo-path <path>
-opencenter cluster import report
-opencenter cluster import apply
-opencenter cluster migrate-layout --org <organization>
-opencenter cluster provider openstack plan <organization>/<cluster>
-opencenter cluster provider openstack apply <organization>/<cluster>
-opencenter cluster service storage plan <service> --cluster <organization>/<cluster> --backend swift|s3
-opencenter cluster service storage apply <service> --cluster <organization>/<cluster> --backend swift|s3
-```
-
-Secrets are split between backend CRUD, manifest synchronization, and SOPS/Age file operations:
-
-```bash
-opencenter secrets login
-opencenter secrets list
-opencenter secrets describe <name>
-opencenter secrets get <name>
-opencenter secrets set <name>
-opencenter secrets delete <name>
-opencenter secrets sync <organization>/<cluster>
-opencenter secrets validate <organization>/<cluster>
-opencenter secrets encrypt
-opencenter secrets decrypt
-opencenter secrets status
-opencenter secrets keys generate
-opencenter secrets keys rotate
-opencenter secrets keys backup
-opencenter secrets keys validate
-opencenter secrets keys check
-opencenter secrets keys revoke
-opencenter secrets keys reconcile
-opencenter secrets keys set-primary
-```
-
-Other built-in groups are `settings`, `plugins list`, `version`, and `shell-init`; standard Cobra `help` and `completion` are also available.
-
-## Runtime and generation facts
-
-- `main.go` calls `cmd.ExecuteWithContext`; the canonical production dependency graph is `di.NewApp` in `internal/di/app.go`, adapted for compatibility with `di.NewAppContainer`.
-- `cmd.NewBuiltinRootCmd` creates the deterministic built-in Cobra tree. External `opencenter-*` executables are discovered and attached only after built-ins in the production runtime, using `OPENCENTER_PLUGINS_DIR`, `<config-dir>/plugins`, and `PATH`.
-- The tools-tagged command-reference generator receives `cmd.NewBuiltinRootCmd()`, so generated Cobra reference pages cover built-ins only and never load external plugins.
-- `cluster generate` runs `internal/cluster.SetupService`: config load, `CopyBase`, encrypted application render/promotion, infrastructure render, Flux bridge render, and optional non-Kind OpenTofu provisioning. `PipelineGenerator` is a supporting API, not the live top-level path.
-- `cluster provider openstack plan/apply` uses a selected `clouds.yaml` profile for read-only discovery and validated typed provider persistence; it has no remote mutation capability. `cluster service storage plan/apply` provisions one supported service at a time, reuses or rotates credentials, persists typed service wiring, and retains recovery state for partial failures. `--dry-run` suppresses storage mutations and local persistence. See the [OpenStack provider and storage operations map](docs/CODEMAPS/openstack-provider-storage-operations.md).
-- Rendering uses descriptor coverage, an immutable built-in `RenderCatalog`, owned action validation, atomic workspace writes, and promotion that preserves `custom/`.
-- `internal/secretartifacts` maps logical secret owners to deterministic physical artifacts. `internal/secrets` performs locked transactional manifest sync with encryption, journaling/rollback, ownership hashes, and state. SOPS overlay value encryption is a separate `internal/sops` concern.
-- OpenStack, VMware, Baremetal, Magnum, and Kind are the current infrastructure provider paths. AWS, GCP, and Azure are rejected planned/unavailable providers.
-
-## Concepts and design
-
-- [Architecture](docs/concepts/architecture.md) — system components and design patterns.
-- [Configuration lifecycle](docs/concepts/configuration-lifecycle.md) — initialization through deployment and updates.
-- [GitOps workflow](docs/concepts/gitops-workflow.md) — generated repository structure and Flux reconciliation.
-- [Security model](docs/concepts/security-model.md) — defense-in-depth controls, SOPS, validation, and audit logging.
-- [Drift detection](docs/concepts/drift-detection.md) — drift rationale and operational behavior.
-- [Configuration precedence](docs/reference/configuration-precedence.md) — override order.
-- [Validation rules](docs/reference/validation-rules.md) — validation lookup.
-- [GitOps configuration](docs/reference/gitops-configuration.md) — repository and Flux settings.
-
-## Operations and providers
-
-- [Manage secrets](docs/operations/manage-secrets.md) — operator procedure for secret workflows.
-- [Backup and restore](docs/operations/backup-and-restore.md) — operator procedure for backups.
-- [Troubleshoot deployment](docs/operations/troubleshoot-deployment.md) — deployment diagnostics.
-- [Provider overview](docs/reference/providers.md) — provider-oriented navigation and support boundary.
-- [VMware guide](docs/providers/vmware.md) — VMware deployment details.
-- [Create a Kind cluster](docs/operations/create-kind-cluster.md) — local Kind workflow.
-- [Import and migration](docs/operations/migrate-clusters.md) — migration procedure.
-
-## Contributing and development
-
-- [Codebase organization](docs/contributing/code-structure.md) — package layout and ownership.
-- [Development setup](docs/contributing/development-setup.md) — toolchain and build setup.
-- [Testing guide](docs/contributing/testing-guide.md) — unit, BDD, property, and integration tests.
-- [Renderer contract](docs/contributing/rendering-contract.md) — descriptor and ownership rules.
-- [Adding providers](docs/contributing/adding-providers.md) — provider extension workflow; verify current capability boundaries before implementation.
-- [Adding services](docs/contributing/adding-services.md) — service extension workflow.
-- [Build system](docs/contributing/build-system.md) — repository build and tooling.
-- [Release process](docs/contributing/release-process.md) — release workflow.
-
-## Release-note source
-
-The source of truth for current published release notes is the GitHub release
-workflow (`.github/workflows/release.yml`), which runs `gh release create
---generate-notes` for pushed `v*` tags. The checked-in pages under `docs/release/`
-are historical, manually maintained documentation snapshots; they are not
-generated by that workflow. The local `mise run release`/`mise run publish` tasks
-only create a preflight notes file under `bin/release/`.
-
-The per-command reference is refreshed with `mise run docs-gen` (`go run cmd/docs/generate.go`); it is intentionally built from the built-in Cobra tree. No generator automatically maintains this `llms.txt` file.
+When exact behavior matters, inspect those sources and the relevant tests, then
+use the linked reference page for reader-facing context. The per-command pages
+are regenerated with `mise run docs-gen`; this file is maintained manually and
+should remain navigation rather than a second command catalog.

@@ -59,6 +59,10 @@ mise run integration
 # Documentation generator test (requires the `tools` build tag)
 mise run test-docs
 
+# Full local Go package sweep, with a 15-minute Go test timeout
+# On failure, a transient failure log is written under .tmp/ for diagnosis
+mise run test-go-all
+
 # Doc generation idempotency check
 mise run test-docs-idempotency
 
@@ -68,14 +72,24 @@ mise run test-kustomize
 # Whitespace-error check on the working tree diff
 mise run test-diff
 
-# Everything: unit + race + vet + BDD + property + vulncheck
+# Aggregate checks: unit + race + vet + BDD + property + vulncheck
 mise run test:all
 
 # The subset developers should run before pushing
 mise run verify
 ```
 
-`mise run test` only covers `internal/config/...`, `cmd/...`, and `internal/cloud/...` -- it is not the full suite. Use `go test ./<package>` directly to scope to one package during development, or `mise run test-race` / `mise run test:all` to cover everything.
+`mise run test` only covers `internal/config/...`, `cmd/...`, and `internal/cloud/...` -- it is not the full suite. `mise run test-go-all` is the local full-repository Go sweep; it applies Go's 15-minute test timeout and, on failure, writes a transient failure log under `.tmp/` for diagnosis rather than keeping a repository artifact. It is separate from `mise run test:all`, whose aggregate is the unit + race + vet + BDD + property + vulnerability-check sequence and does not replace either repository documentation checks or the full-package sweep. Use `go test ./<package>` directly to scope to one package during development.
+
+### Documentation checks and publication boundary
+
+`mise run test-docs` is intentionally repository-only. In addition to the
+documentation-generator tests, it checks maintained Markdown structure,
+frontmatter, local links, and Mermaid fence structure. A passing Mermaid check
+is evidence only that the fences meet the repository's structural rules; it
+does **not** render diagrams or verify their visual output. The repository does
+not configure a documentation publication or deployment platform, so this task
+does not publish a site.
 
 ### Running one package or one test
 
@@ -141,7 +155,7 @@ Feature: Cluster Initialization
   Scenario: Initialize cluster with defaults
     When I run "opencenter cluster init demo --org my-org"
     Then the command should succeed
-    And a configuration file should exist at "my-org/.demo-config.yaml"
+    And a configuration file should exist at "blueprints/my-org/demo/demo-config.yaml"
 
   @wip
   Scenario: Initialize cluster with invalid name
@@ -210,16 +224,21 @@ CI coverage is defined entirely by `.github/workflows/*.yml`; see [GitHub Action
 * `test.yml` runs on pull requests and pushes to `main`: a `go-test` job that directly runs `go test ./internal/... ./cmd/... -count=1 -race` and `go vet ./...`, plus an independent `property-tests` job using the same package scope and `-run 'TestProperty'`.
 * `pre-commit.yaml` runs the pre-commit hook set for changed files on every pull request.
 * `vulncheck.yml` runs `govulncheck ./...` on pull requests, on a weekly schedule, and on manual dispatch.
-* `docs-p0.yml` runs for pull requests that touch Markdown files; it audits the changed files with `audit_doc_frontmatter.py --strict` and runs Vale.
+* `docs-p0.yml` runs for pull requests that touch Markdown files; it audits the changed files with `audit_doc_frontmatter.py --strict`, runs Vale, and runs `mise run test-docs`.
 * `deploy-kind.yml` is a manually dispatched, disposable Kind + Gitea end-to-end workflow -- it is not a per-commit gate.
 
-CI does **not** run the BDD suite, the `integration` task, the documentation-generator tests, the Kustomize check, or `mise run test:all`. Run those locally before opening a PR when your change touches the relevant area:
+The general test workflow does **not** run the BDD suite, the `integration`
+task, the documentation-generator tests, the Kustomize check,
+`mise run test-go-all`, or `mise run test:all`; the docs workflow runs
+`mise run test-docs` for documentation pull requests. Run the relevant checks
+locally before opening a PR:
 
 ```bash
 mise run godog
 mise run integration
 mise run test-docs
 mise run test-docs-idempotency
+mise run test-go-all
 mise run test:all
 ```
 

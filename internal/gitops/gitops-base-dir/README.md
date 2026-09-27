@@ -1,14 +1,16 @@
-# GitOps Repository
+# Generated GitOps repository
 
-This repository contains the GitOps configuration for your Kubernetes cluster managed by opencenter.
+This directory is the base layout copied into a cluster's generated GitOps
+workspace. It contains:
 
-## Structure
+- `applications/` — application manifests and environment overlays.
+- `infrastructure/` — cluster-specific infrastructure configuration.
 
-- `applications/` - Application manifests and overlays
-- `infrastructure/` - Infrastructure configuration including cluster-specific settings
+The CLI owns generated files. Change the cluster configuration and regenerate
+with:
 
-## Usage
+```bash
+opencenter cluster generate <organization>/<cluster> --render-only
+```
 
-This repository is managed by opencenter CLI. Changes should be made through the CLI or by editing the configuration files and running `opencenter cluster generate --render-only` to regenerate the manifests.
-
-For more information, see the [opencenter documentation](https://github.com/opencenter-cloud/opencenter-cli).
+Review generated changes before committing them to the GitOps repository.

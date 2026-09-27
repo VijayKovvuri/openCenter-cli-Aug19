@@ -1,79 +1,32 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-etcd-backup
 title: "etcd Backup"
 sidebar_label: etcd Backup
-description: etcd snapshot backup service configuration, S3 endpoint fields, opt-out behavior, and secrets.
+description: etcd-backup configuration and descriptor conditional rendering.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [etcd, backup, disaster-recovery, services]
+tags: [etcd, backup, services]
 ---
 
-> **Purpose:** For platform engineers, documents the etcd backup service's configuration surface and required S3 credentials.
-
-## Overview
-
-The etcd backup service uploads etcd snapshots to an S3-compatible bucket. It is disabled by default. Set `storage_type: none` for an explicit opt-out; the etcd upload CronJob and its S3 integration are omitted, so no etcd snapshots are uploaded and the service credentials are not consumed.
-
-```yaml
-opencenter:
-  services:
-    etcd-backup:
-      enabled: true
-      storage_type: none
-```
+> **Evidence:** `internal/config/services/etcd_backup.go`, `internal/config/v2/defaults.go`, `internal/services/plugins/default_services.go`, and `internal/services/descriptors/data/service-etcd-backup.yaml`.
 
 ## Configuration
 
-```yaml
-opencenter:
-  services:
-    etcd-backup:
-      enabled: false               # default: false
-      namespace: kube-system        # default: kube-system
-      storage_type: s3               # default: s3; s3 | none
-      s3_host:
-      s3_endpoint:
-      s3_bucket_name:
-      s3_credential_id:
-      s3_region:
-```
+The generated default is disabled in `kube-system`. `EtcdBackupConfig` embeds `BaseConfig` and adds `s3_host`, `s3_endpoint`, `s3_bucket_name`, `s3_credential_id`, `s3_region`, and `storage_type`.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether etcd snapshot backups are enabled |
-| `namespace` | string | `kube-system` | Namespace for the backup CronJob |
-| `s3_host` | string | — | S3-compatible endpoint host (legacy compatibility field) |
-| `s3_endpoint` | string | — | S3-compatible endpoint URL |
-| `s3_bucket_name` | string | — | S3 bucket name |
-| `s3_credential_id` | string | — | OpenStack EC2 credential ID (non-secret lifecycle metadata, not a pod secret) |
-| `s3_region` | string | — | S3 region |
-| `storage_type` | string | `s3` | `s3` or `none`; `none` omits the S3 upload CronJob/integration |
+The type-level metadata documents `storage_type` values `s3` and `none`, with `s3` as default. `EtcdBackupSecrets` declares `access_key_id` and `secret_access_key`.
 
-## Secrets
+## Runtime and descriptor facts
 
-```yaml
-secrets:
-  etcd_backup:
-    access_key_id:
-    secret_access_key:
-```
+The plugin validator accepts only empty, `s3`, or `none` storage values. The descriptor root `services/etcd-backup` is conditional: it is included when `opencenter.services.etcd-backup.storage_type` is not equal to `none`. The descriptor aggregates into `services-fluxcd-aggregate`.
 
-Global AWS credentials are not used as a fallback for `etcd-backup`. When `storage_type: none` is selected, the service-specific credentials are not consumed or referenced by rendered manifests because the S3 upload CronJob/integration is omitted.
+This condition is a descriptor fact; the plugin's `Render` method is a no-op and does not itself render the root.
 
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
-
-## Rendering
-
-`etcd-backup` has a dedicated descriptor (`internal/services/descriptors/data/service-etcd-backup.yaml`, `service: etcd-backup`) that owns everything under the `services/etcd-backup` template root and aggregates into `services-fluxcd-aggregate`.
-
-## CLI commands
+## Commands
 
 ```bash
-opencenter cluster service enable etcd-backup --param="s3_endpoint=https://s3.example.com" --param="s3_bucket_name=my-cluster-etcd-backups" --param="s3_region=us-east-1" --secret="access_key_id=..." --secret="secret_access_key=..."
+opencenter cluster service enable etcd-backup
 opencenter cluster service disable etcd-backup
-opencenter cluster service status
 opencenter cluster service options etcd-backup
 ```

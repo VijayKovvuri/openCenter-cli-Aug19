@@ -47,8 +47,8 @@ Tests follow the source 1:1: `cluster_init_integration_test.go`, `cluster_deploy
 
 ### Configuration (`internal/config/`)
 
-* Top level: `cli_settings.go` / `cli_settings_helpers.go` (user preferences, cluster defaults, plugin checksums, path resolution such as `ResolveClustersDir`), `manager.go` (global manager singleton, load/cache orchestration), `persistence.go` (config/state directory resolution), `status.go` (per-cluster stage/status tracking).
-* `defaults/` -- built-in default templates.
+* Top level: `cli_settings.go` / `cli_settings_helpers.go` (user preferences, cluster defaults, plugin checksums, and zone-root resolution such as `ResolveClustersDir`), `manager.go` (load/cache orchestration), `persistence.go` (config/state directory resolution), `status.go` (per-cluster stage/status tracking).
+* `defaults/` -- provider/region default registries.
 * `flags/` -- CLI flag parsing and struct mutation via reflection (used for dotted override flags like `opencenter.infrastructure.compute.worker_count=5`).
 * `overlay/` -- shared overlay-unit types (`UnitsConfig`, `CustomerManagedConfig`, `SOPSGenerationConfig`, `Secrets`) used by both the active config model and v2.
 * `registry/` -- provider/service registry glue.
@@ -95,7 +95,7 @@ Tests follow the source 1:1: `cluster_init_integration_test.go`, `cluster_deploy
 
 ### Cluster lifecycle orchestration (`internal/cluster/`)
 
-Business logic behind the `cmd/cluster_*.go` commands: `init_service.go`, `configure_service.go` (+ provider orchestrators such as `openstack_configure_orchestrator.go`, `magnum_configure_orchestrator.go`), `setup_service.go` (backs `cluster generate`), `validate_service.go` (+ `validation_formatter.go`, `validation_report.go`), `bootstrap_service.go` / `bootstrap_provider.go` / `bootstrap_plan.go` / `bootstrap_runtime.go` (backs `cluster deploy`; provider-specific steps in `openstack_bootstrap_provider.go`... actually see note below), `destroy_service.go` / `destroy_provider.go`, `configure_storage.go`, `configure_dns.go`, `configure_git_auth.go`, `admin_secrets.go`, `sops_age_secret.go`, `tofu_binary.go`.
+Business logic behind the `cmd/cluster_*.go` commands: `init_service.go`, `configure_service.go` (+ provider orchestrators such as `openstack_configure_orchestrator.go`, `magnum_configure_orchestrator.go`), `setup_service.go` (backs `cluster generate`), `validate_service.go` (+ `validation_formatter.go`, `validation_report.go`), `bootstrap_service.go` / `bootstrap_provider.go` / `bootstrap_plan.go` / `bootstrap_runtime.go` (backs `cluster deploy`; provider-specific steps in `bootstrap_provider_infra.go`), `destroy_service.go` / `destroy_provider.go`, `configure_storage.go`, `configure_dns.go`, `configure_git_auth.go`, `admin_secrets.go`, `sops_age_secret.go`, `tofu_binary.go`.
 
 ### Validation (`internal/core/validation/`)
 
@@ -145,14 +145,19 @@ BDD scenarios live in `tests/features/*.feature` (Gherkin), executed via [Godog]
 
 ```
 ~/.config/opencenter/clusters/
-└── <organization>/
-    ├── .<cluster>-config.yaml       # v2 cluster configuration (dot-prefixed)
-    ├── infrastructure/clusters/<cluster>/
-    ├── applications/overlays/<cluster>/
-    ├── secrets/
-    │   ├── age/keys/<cluster>-key.txt
-    │   └── ssh/<cluster>-<env>-<region>
-    └── .sops.yaml
+├── blueprints/<organization>/<cluster>/<cluster>-config.yaml
+├── gitops/<organization>/
+│   ├── infrastructure/clusters/<cluster>/
+│   ├── applications/overlays/<cluster>/
+│   └── .sops.yaml
+├── state/<organization>/<cluster>/
+│   ├── kubeconfig.yaml
+│   ├── inventory/
+│   ├── venv/
+│   └── .bin/
+└── secrets/<organization>/<cluster>/
+    ├── age/keys/<cluster>-key.txt
+    └── ssh/<cluster> (+ .pub)
 ```
 
 See [File Locations](../reference/file-locations.md) for the full, verified path list and the environment variables that override each root.

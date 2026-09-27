@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: default-values
 title: "Default Values"
 sidebar_label: Default Values
@@ -10,7 +10,7 @@ tags: [defaults, configuration, v2, reference]
 ---
 # Default Values
 
-**Purpose:** For operators and developers, documents the default values `opencenter cluster init` (via `v2.NewV2Default`) actually writes into a new cluster configuration, verified against `internal/config/v2/defaults.go`. Do not trust default values quoted elsewhere (including this project's own `README.md`, which is stale on Kubernetes version and worker count as of this writing) -- this page and the live `opencenter cluster init` output are the sources of truth.
+**Purpose:** For operators and developers, documents the default values `opencenter cluster init` (via `v2.NewV2Default`) actually writes into a new cluster configuration, verified against `internal/config/v2/defaults.go`. Use this page and the live `opencenter cluster init` output as the sources of truth for these values.
 
 ## Kubernetes / cluster defaults (non-Kind providers)
 
@@ -42,10 +42,13 @@ Kind uses its own, separate default constants (not the table above):
 | Worker count | `2` |
 | Pod subnet | `10.244.0.0/16` |
 | Service subnet | `10.96.0.0/16` |
+| Default CNI | Kind's built-in `kindnet`; managed Calico is disabled unless `--kind-disable-default-cni` is used. |
 
-## CLI-config-sourced defaults (`loadCLIDefaults`)
+## Cluster-init defaults from `config.yaml` (`loadCLIDefaults`)
 
-`v2.NewV2Default` also reads `~/.config/opencenter/config.yaml` (or `$OPENCENTER_CONFIG_DIR/config.yaml`) for a small set of values that seed the new cluster config if present: `organization`, `provider`, `region`, `environment`, `gitops_auth_method`, `ssh_authorized_keys`. The CLI settings struct also carries `base_domain`, `admin_email`, `kubernetes_version`, `cni`, and `ssh_user` fields, but as of this writing those are **not** wired into `NewV2Default` -- setting them in `config.yaml` has no effect on a newly initialized cluster. Verify against `internal/config/v2/defaults.go` before relying on this if you're reading this after a future change.
+`v2.NewV2Default` reads `<config-dir>/config.yaml` (or `$OPENCENTER_CONFIG_DIR/config.yaml`) for `cluster_defaults`. This is separate from the CLI settings file, which is `<config-dir>/settings.yaml`. The values currently consumed for a new cluster are `organization`, `provider`, `region`, `environment`, `gitops_auth_method`, and `ssh_authorized_keys`.
+
+The loader also parses `base_domain`, `admin_email`, `kubernetes_version`, `cni`, and `ssh_user`, but those fields are not currently applied by `NewV2Default`; setting them in `config.yaml` does not change the corresponding generated values. Verify against `internal/config/v2/defaults.go` when relying on this compatibility file.
 
 ## Default platform-service namespaces
 
@@ -53,10 +56,10 @@ Every built-in service gets a default namespace from `NewDefaultServiceConfig` i
 
 ## How defaults combine with everything else
 
-Defaults are the lowest-precedence layer in the cluster-config merge order -- see [Configuration Precedence](configuration-precedence.md) (`SourceDefault -> SourceFile -> SourceTemplate -> SourceCLI`). A template selection (`--type <provider>`) or an explicit flag/dotted-override always wins over the defaults documented here.
+Defaults are used when `InitService` creates a new v2 configuration. Explicit initialization options and dotted overrides are then applied by the init path. The generic `DefaultConfigurationMerger` described in [Configuration Precedence](configuration-precedence.md) is a separate configuration-file merging facility, not a description of the complete `cluster init` pipeline.
 
 ## Cross-references
 
 * [Configuration Schema Reference](configuration-schema.md) -- full field structure.
-* [Configuration Precedence](configuration-precedence.md) -- how defaults, file, template, and CLI flags combine.
+* [Configuration Precedence](configuration-precedence.md) -- generic configuration-file merging and CLI-tool path resolution.
 * [Cluster Init Details](../contributing/cluster-init-details.md) -- the exact code path that builds these defaults.

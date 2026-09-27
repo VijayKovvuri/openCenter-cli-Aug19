@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: gitops-configuration
 title: "GitOps Configuration Reference"
 sidebar_label: GitOps Config

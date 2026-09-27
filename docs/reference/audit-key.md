@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: audit-key
 title: "Audit Signing Key"
 sidebar_label: Audit Signing Key

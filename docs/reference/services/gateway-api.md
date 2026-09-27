@@ -1,50 +1,44 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-gateway-api
 title: "Gateway API"
 sidebar_label: Gateway API
-description: Gateway API CRD installation configuration, consumed by the gateway service.
+description: Gateway API service configuration and built-in catalog rendering.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [networking, gateway-api, crds, services]
+tags: [networking, gateway-api, services]
 ---
 
-> **Purpose:** For platform engineers and operators, documents the Gateway API CRD service that the [gateway](gateway.md) service depends on.
-
-## Overview
-
-`gateway-api` installs the Kubernetes Gateway API resources (Envoy Gateway's implementation) that the [gateway](gateway.md) service uses. It has no service-specific configuration beyond the shared `BaseConfig` fields (`internal/config/services/default_services.go` registers it as `DefaultServiceConfig`).
+> **Evidence:** `internal/config/services/default_services.go`, `internal/config/v2/defaults.go`, `internal/services/plugins/registry.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
+
+`gateway-api` uses `DefaultServiceConfig`; its service-specific configuration is the common `BaseConfig`. The generated default is enabled in `envoy-gateway-system`.
 
 ```yaml
 opencenter:
   services:
     gateway-api:
-      enabled: true                       # default: true
-      namespace: envoy-gateway-system      # default: envoy-gateway-system
+      enabled: true
+      namespace: envoy-gateway-system
       adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether Gateway API resources are deployed |
-| `namespace` | string | `envoy-gateway-system` | Namespace for Envoy Gateway API resources |
-| `adoption_mode` | string | `managed` | See [Platform services architecture](../platform-services.md#adoption_mode) |
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `true` | `NewDefaultServiceConfig` |
+| `namespace` | `envoy-gateway-system` | `NewDefaultServiceConfig` |
+| common fields | — | `BaseConfig` |
 
-## Dependencies
+## Runtime and rendering
 
-None enforced by `opencenter cluster service enable|disable`.
+The plugin registry records no dependency for `gateway-api`. The catalog entry uses Kustomization name `envoy-gateway-api` and override values containing logging level `info`. No service descriptor file names `gateway-api`.
 
-## Rendering
-
-`gateway-api` has no dedicated YAML descriptor; it is rendered through the built-in render catalog (`internal/gitops/render_catalog.go`), which sets its Flux Kustomization name to `envoy-gateway-api` and applies override Helm values setting the Envoy Gateway logging level to `info`.
-
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable gateway-api
 opencenter cluster service disable gateway-api
-opencenter cluster service status
 opencenter cluster service options gateway-api
 ```

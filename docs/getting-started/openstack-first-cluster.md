@@ -1,798 +1,97 @@
 ---
-last_updated: 2026-09-25
 id: openstack-first-cluster
-title: "Deploy Your First Production Cluster on OpenStack"
-sidebar_label: Deploy Your First
-description: Step-by-step tutorial to deploy a production-ready Kubernetes cluster on OpenStack.
+title: Configure an OpenStack cluster
+sidebar_label: Configure an OpenStack cluster
+description: Configure an OpenStack cluster file and review its provider selections with openCenter.
 doc_type: tutorial
-audience: "platform engineers, operators"
-tags: [openstack, tutorial, deployment, production]
+audience: openCenter users
+tags: [openstack, configuration]
+last_updated: 2026-09-25
 ---
-# Deploy Your First Production Cluster on OpenStack
+# Configure an OpenStack cluster
 
-**Purpose:** For OpenStack users, shows how to deploy a production-ready Kubernetes cluster on OpenStack, covering prerequisites through validation.
+This tutorial shows the repository's OpenStack configuration workflow. It does
+not promise a cloud outcome: provider discovery needs a usable `clouds.yaml`
+profile, while deployment needs credentials and a target cloud.
 
-By the end of this tutorial, you’ll have a fully functional, production-ready Kubernetes cluster running on OpenStack with platform services deployed via GitOps.
-
-**Time:** 45-60 minutes
-
-## What You’ll Build
-
-A production Kubernetes cluster with:
-
-* 3 control plane nodes (high availability)
-* 3 worker nodes (production capacity)
-* Calico CNI networking
-* OpenStack Cinder CSI storage
-* Octavia load balancer
-* 20+ platform services (cert-manager, Keycloak, monitoring, etc.)
-* FluxCD GitOps continuous delivery
-
-## Prerequisites
-
-Before starting, ensure you have:
-
-**OpenStack Access:**
-
-* OpenStack cloud account (public or private)
-* API credentials (username, password, project name)
-* OpenStack CLI installed (`openstack` command)
-* A selected `clouds.yaml` profile for provider discovery (`--os-cloud`)
-* Network quota (1 network, 1 subnet, 1 router)
-* Compute quota (6 instances minimum, 24 vCPUs, 96 GB RAM)
-* Storage quota (240 GB volumes)
-
-**Local Tools:**
-
-* openCenter CLI installed
-* Git installed
-* SSH client
-* Text editor
-* `kubectl`, and `flux` for post-deployment checks
-
-**Verify OpenStack Access:**
+## 1. Initialize and inspect
 
 ```bash
-# Test OpenStack credentials
-openstack server list
-
-# Check quotas
-openstack quota show
+opencenter cluster init demo --org my-org --type openstack
+opencenter cluster describe my-org/demo
 ```
 
-If these commands work, you’re ready to proceed.
+Edit the generated v2 file, or use the guided command:
 
-## Step 1: Initialize Cluster Configuration
+Use the guided configuration workflow where interactive input is appropriate.
+The command is exposed by the CLI; this page keeps the command matrix focused
+on the file-based path below.
 
-Create a new cluster configuration with OpenStack defaults:
+The configuration must contain the OpenStack fields required by readiness
+validation, including `auth_url`, `region`, `project_id`, and `image_id`.
+Application credential ID and secret are validated as a pair.
+
+## 2. Plan provider selections
+
+The provider plan performs discovery and reports a typed plan without writing the
+cluster file or mutating OpenStack:
 
 ```bash
-opencenter cluster init prod-cluster \
-  --org my-company \
-  --type openstack
-
-# Make the cluster explicit for commands that accept the active cluster
-opencenter cluster use my-company/prod-cluster
+opencenter cluster provider openstack plan my-org/demo \
+  --os-cloud my-profile
 ```
 
-**What happens:**
-
-* Creates configuration file at `~/.config/opencenter/clusters/my-company/.prod-cluster-config.yaml`
-* Applies OpenStack defaults (region, availability zone, image ID, etc.)
-* Generates SSH keys for cluster access
-* Generates SOPS Age keys for secrets encryption
-
-**Output:**
-
-```
-✓ Created cluster configuration: prod-cluster
-✓ Generated SSH keys: ~/.config/opencenter/clusters/my-company/secrets/ssh/prod-cluster-key
-✓ Generated SOPS Age keys: ~/.config/opencenter/clusters/my-company/secrets/age/prod-cluster-key.txt
-
-Configuration file: ~/.config/opencenter/clusters/my-company/.prod-cluster-config.yaml
-
-Next steps:
-1. Edit configuration file to customize cluster
-2. Validate configuration: opencenter cluster validate prod-cluster
-3. Generate GitOps repository: opencenter cluster generate prod-cluster
-```
-
-## Step 2: Discover Provider Metadata and Configure OpenStack Credentials
-
-Before editing the provider block, use the read-only provider plan to discover
-values from the selected OpenStack profile:
+Selectors available in the command include `--image-id`, `--network-id`,
+`--external-network-id`, `--subnet-id`, and `--availability-zone`. If the
+generated infrastructure should own the internal network and subnet, use:
 
 ```bash
-opencenter cluster provider openstack plan my-company/prod-cluster \
-  --os-cloud <clouds.yaml-profile>
+opencenter cluster provider openstack plan my-org/demo \
+  --os-cloud my-profile --create-internal-network
 ```
 
-The plan can propose typed values for `auth_url`, `region`, `project_id`,
-`image_id`, `network_id`, `subnet_id`, `router_external_network_id`, and
-`availability_zone`. It reports changes, required selections, warnings, and
-`Remote actions: none`; it does not write the cluster file or mutate OpenStack.
+That mode cannot be combined with `--network-id` or `--subnet-id`.
 
-If discovery finds more than one candidate, provide only the selectors it
-requests. Keep the internal and external networks distinct:
+## 3. Apply the reviewed selections
+
+Use the same selectors with apply:
 
 ```bash
-opencenter cluster provider openstack plan my-company/prod-cluster \
-  --os-cloud <clouds.yaml-profile> \
-  --image-id <linux-image-id> \
-  --network-id <internal-network-id> \
-  --external-network-id <external-network-id> \
-  --subnet-id <internal-subnet-id> \
-  --availability-zone <availability-zone>
+opencenter cluster provider openstack apply my-org/demo \
+  --os-cloud my-profile --image-id IMAGE_ID --network-id NETWORK_ID \
+  --external-network-id EXTERNAL_NETWORK_ID --subnet-id SUBNET_ID
 ```
 
-To let generated OpenTofu create the internal network and subnet, use
-`--create-internal-network` on both plan and apply instead of network or subnet
-selectors:
+`--import-auth` and `--import-tls` import profile values when requested.
+`--replace` permits replacing populated selections. `--yes` is required for
+non-interactive confirmation; global `--dry-run` stops before the local write.
+
+## 4. Validate and render
 
 ```bash
-opencenter cluster provider openstack plan my-company/prod-cluster \
-  --os-cloud <clouds.yaml-profile> \
-  --create-internal-network
+opencenter cluster validate my-org/demo
+opencenter cluster generate my-org/demo
 ```
 
-Create mode skips internal network discovery and leaves OpenTofu responsible
-for those resources. It cannot be combined with `--network-id`, `--subnet-id`,
-or a configured VLAN network. If existing internal selections must be cleared,
-add `--replace` to both plan and apply. Likewise, use `--replace` on both
-commands only when replacing an already-populated provider value; it is not
-needed to fill a blank value.
+Use `--validation online` when provider or Git remote checks are wanted. Use
+`--render-only` to render templates without the full repository setup flow.
 
-Apply create mode with the same flag:
+## 5. Deploy
 
 ```bash
-opencenter cluster provider openstack apply my-company/prod-cluster \
-  --os-cloud <clouds.yaml-profile> \
-  --create-internal-network
+opencenter cluster deploy my-org/demo
 ```
 
-Review the plan, then apply the same selections. Optional profile imports are
-available for application credentials and TLS settings:
-
-```bash
-opencenter cluster provider openstack apply my-company/prod-cluster \
-  --os-cloud <clouds.yaml-profile> \
-  --image-id <linux-image-id> \
-  --network-id <internal-network-id> \
-  --external-network-id <external-network-id> \
-  --subnet-id <internal-subnet-id> \
-  --availability-zone <availability-zone> \
-  --import-auth \
-  --import-tls
-```
-
-`--import-auth` requires both the application-credential ID and secret in the
-profile. `--import-tls` persists the profile's CA and TLS settings; if it would
-set `insecure: true`, use `--replace --import-tls` deliberately. In text mode,
-apply asks for confirmation; use the global `--yes` for non-interactive runs.
-Structured output requires `--yes`, and global `--dry-run` stops before the
-local write. Provider plan/apply has no remote mutation path; infrastructure
-creation happens later through generated OpenTofu.
-
-See the [provider plan reference](../reference/opencenter/opencenter_cluster_provider_openstack_plan.md)
-and [provider apply reference](../reference/opencenter/opencenter_cluster_provider_openstack_apply.md)
-for the complete flag sets.
-
-Edit the configuration file to add your OpenStack credentials:
-
-```bash
-opencenter cluster edit prod-cluster
-```
-
-Update the OpenStack section:
-
-```yaml
-opencenter:
-  infrastructure:
-    provider: openstack
-    cloud:
-      openstack:
-        # Your OpenStack region
-        region: sjc3
-
-        # The v2 runtime uses application credentials.
-        auth_url: "https://identity.api.rackspacecloud.com/v3"
-        project_id: "your-project-id"
-        application_credential_id: "your-app-credential-id"
-        application_credential_secret: "your-app-credential-secret"
-        project_name: "your-project-name"
-        project_domain_name: "Default"
-        user_domain_name: "Default"
-
-        # Availability zone
-        availability_zone: az1
-
-        # Ubuntu 24.04 image ID (verify this exists in your region)
-        image_id: "your-image-id"
-
-        # Replace all example and placeholder values before validation.
-        floating_network_id: "your-floating-network-id"
-
-        # Network configuration
-        network_id: "your-network-id"
-        subnet_id: "your-subnet-id"
-        router_external_network_id: "your-external-network-id"
-```
-
-**Finding your image ID:**
-
-```bash
-# List available Ubuntu images
-openstack image list --name Ubuntu
-
-# Use the Ubuntu 24.04 image ID
-```
-
-Save and close the editor.
-
-## Step 3: Customize Cluster Configuration
-
-Edit cluster-specific settings:
-
-```yaml
-opencenter:
-  meta:
-    name: prod-cluster
-    env: production
-    region: sjc3
-    organization: my-company
-
-  cluster:
-    # Kubernetes version
-    kubernetes:
-      version: "1.33.5"
-
-    # Node counts (high availability)
-    master_count: 3
-    worker_count: 3
-
-    # Instance flavors
-    master_flavor: "gp.0.4.8"   # 4 vCPU, 8 GB RAM
-    worker_flavor: "gp.0.4.16"  # 4 vCPU, 16 GB RAM
-    bastion_flavor: "gp.0.2.2"  # 2 vCPU, 2 GB RAM
-
-    # Networking
-    networking:
-      pod_subnet: "10.42.0.0/16"
-      service_subnet: "10.43.0.0/16"
-      cni_plugin: calico
-      use_octavia: true  # Use OpenStack load balancer
-
-    # Storage
-    storage:
-      default_storage_class: "csi-cinder-sc-delete"
-      worker_volume_size: 40  # GB per worker
-      worker_volume_type: "HA-Standard"
-```
-
-**Flavor selection tips:**
-
-* Masters: 4 vCPU, 8 GB RAM minimum (control plane overhead)
-* Workers: 4 vCPU, 16 GB RAM minimum (application workloads)
-* Bastion: 2 vCPU, 2 GB RAM (SSH jump host only)
-
-## Step 4: Configure Platform Services
-
-Review and customize platform services:
-
-```yaml
-opencenter:
-  services:
-    # Core services (enabled by default)
-    cert-manager:
-      enabled: true
-
-    keycloak:
-      enabled: true
-      hostname: "auth.my-company.prod-cluster.sjc3.k8s.opencenter.cloud"
-      admin_password: "change-me-in-production"  # Will be encrypted
-
-    kube-prometheus-stack:
-      enabled: true
-      grafana_admin_password: "change-me-in-production"  # Will be encrypted
-
-    loki:
-      enabled: true
-      retention_days: 30
-
-    velero:
-      enabled: true
-      s3_bucket: "prod-cluster-backups"
-      s3_region: "sjc3"
-
-    # Optional services
-    harbor:
-      enabled: true  # Container registry
-      hostname: "harbor.my-company.prod-cluster.sjc3.k8s.opencenter.cloud"
-      admin_password: "change-me-in-production"  # Will be encrypted
-
-    headlamp:
-      enabled: true  # Kubernetes dashboard
-      hostname: "dashboard.my-company.prod-cluster.sjc3.k8s.opencenter.cloud"
-```
-
-**Service selection tips:**
-
-* Enable cert-manager (required for TLS certificates)
-* Enable Keycloak (authentication and RBAC)
-* Enable monitoring (kube-prometheus-stack, Loki)
-* Enable Velero (disaster recovery)
-* Optional: Harbor (private registry), Headlamp (dashboard)
-
-### Optional: Provision storage for an individual service
-
-Storage provisioning is separate from provider reconciliation. Run a plan/apply
-pair once for each enabled service that needs an OpenStack object store. The
-supported pairs are `loki` with `swift` or `s3`, and `tempo`, `etcd-backup`,
-or `velero` with `s3`:
-
-```bash
-opencenter cluster service storage plan loki \
-  --cluster my-company/prod-cluster \
-  --backend swift \
-  --os-cloud <clouds.yaml-profile>
-
-opencenter cluster service storage apply loki \
-  --cluster my-company/prod-cluster \
-  --backend swift \
-  --os-cloud <clouds.yaml-profile>
-```
-
-For S3-compatible storage, use `--backend s3`; `--container` selects the
-container or bucket name and `--s3-endpoint` overrides the profile endpoint.
-Storage plan performs preflight and reports redacted changes and ordered remote
-actions without creating a container, creating credentials, or writing the
-configuration. Existing complete credentials are reused; a partial credential
-pair requires `--rotate-credentials` on both plan and apply.
-
-Storage apply provisions the external credentials and writes the typed service
-and secret fields. It is different from `opencenter secrets sync`, which reads
-configured secrets and writes SOPS-encrypted Kubernetes manifests. Use
-`secrets sync` after storage provisioning and before publishing the generated
-GitOps repository. See the [storage plan reference](../reference/opencenter/opencenter_cluster_service_storage_plan.md)
-and [storage apply reference](../reference/opencenter/opencenter_cluster_service_storage_apply.md).
-
-## Step 5: Validate Configuration
-
-Validate your configuration before deployment:
-
-```bash
-opencenter cluster validate prod-cluster
-```
-
-Validation is offline by default. Use `--validation online` when provider and
-Git remote checks are also required. Re-run validation after editing the
-configuration and before generation.
-
-**What’s validated:**
-
-1. Schema compliance (structure, types, formats)
-2. Business rules (cross-field dependencies)
-3. OpenStack constraints (image IDs, flavors, networks)
-4. Connectivity (optional, requires credentials)
-
-**Expected output:**
-
-```
-✓ Schema validation passed
-✓ Business rules validation passed
-✓ OpenStack validation passed
-  - Image ID exists: 799dcf97-3656-4361-8187-13ab1b295e33
-  - Flavors available: gp.0.4.8, gp.0.4.16, gp.0.2.2
-  - Network quota sufficient: 1/10 networks used
-  - Compute quota sufficient: 0/50 instances used
-
-Configuration is valid and ready for deployment.
-```
-
-**If validation fails:**
-
-* Read error messages carefully (they explain what’s wrong)
-* Fix issues in configuration file
-* Re-run validation
-* See [Troubleshooting](#troubleshooting) section below
-
-## Step 6: Generate GitOps Repository
-
-Generate the complete GitOps repository structure:
-
-```bash
-opencenter cluster generate prod-cluster
-```
-
-**What’s generated:**
-
-```
-~/prod-cluster-gitops/
-├── .gitignore
-├── .sops.yaml                     # SOPS encryption rules
-├── README.md
-│
-├── applications/
-│   └── overlays/prod-cluster/
-│       ├── flux-system/           # FluxCD bootstrap
-│       ├── services/              # Platform services
-│       └── managed-services/      # Customer applications
-│
-└── infrastructure/
-    └── clusters/prod-cluster/
-        ├── main.tf                # OpenTofu infrastructure
-        ├── provider.tf
-        ├── variables.tf
-        ├── inventory/             # Kubespray Ansible
-        └── credentials/           # Encrypted credentials
-```
-
-**Output:**
-
-```
-✓ Generated GitOps repository: ~/prod-cluster-gitops
-✓ Encrypted secrets with SOPS
-✓ Created OpenTofu configuration
-✓ Created Kubespray inventory
-✓ Created FluxCD manifests
-
-Next steps:
-1. Review generated files
-2. Initialize Git repository: cd ~/prod-cluster-gitops && git init
-3. Commit files: git add . && git commit -m "Initial cluster configuration"
-4. Push to Git: git remote add origin <your-repo-url> && git push -u origin main
-5. Bootstrap cluster: opencenter cluster deploy prod-cluster
-```
-
-Generation validates before writing unless `--skip-validation` is supplied.
-Generated overlays can contain encrypted content, so treat the generated
-repository as sensitive.
-
-## Step 6a: Synchronize Secrets and Validate Manifests
-
-After storage provisioning and generation, materialize encrypted service
-secrets and validate the generated manifests:
-
-```bash
-opencenter secrets sync my-company/prod-cluster
-opencenter cluster validate my-company/prod-cluster --manifests
-```
-
-Check that generated service `secret.yaml` files contain SOPS values such as
-`ENC[...]`, not plaintext. Resolve security findings before publishing.
-
-## Step 7: Initialize and Publish the Git Repository
-
-Initialize and push to Git (GitOps requires Git):
-
-```bash
-# Navigate to GitOps repository
-cd ~/prod-cluster-gitops
-
-# Initialize Git
-git init
-
-# Add all files
-git add .
-
-# Commit
-git commit -m "Initial prod-cluster configuration"
-
-# Add remote (replace with your Git repository URL)
-git remote add origin git@github.com:my-company/prod-cluster-gitops.git
-
-# Push to remote
-git push -u origin main
-```
-
-**Why Git is required:**
-
-* FluxCD pulls configuration from Git
-* Git provides audit trail (who changed what, when)
-* Git enables rollback (revert commits)
-* Git enables collaboration (pull requests)
-
-`openCenter` does not commit or push the GitOps repository. Publish the
-generated and encrypted files explicitly and confirm that repository CI checks
-pass:
-
-```bash
-git add -A
-git commit -m "deploy my-company/prod-cluster"
-git push
-```
-
-## Step 8: Bootstrap Cluster
-
-Deploy the cluster (this takes 30-45 minutes):
-
-```bash
-# Preview the workflow without mutating local or remote state
-opencenter --dry-run cluster deploy my-company/prod-cluster
-
-opencenter cluster deploy my-company/prod-cluster
-```
-
-**What happens:**
-
-```
-Phase 1: Infrastructure Provisioning (10-15 minutes)
-  ✓ Creating network and subnet
-  ✓ Creating router and external gateway
-  ✓ Creating security groups
-  ✓ Provisioning bastion host
-  ✓ Provisioning 3 control plane nodes
-  ✓ Provisioning 3 worker nodes
-  ✓ Attaching volumes to workers
-  ✓ Assigning floating IPs
-
-Phase 2: Kubernetes Deployment (15-20 minutes)
-  ✓ Installing dependencies (Python, Docker, etc.)
-  ✓ Configuring control plane nodes
-  ✓ Deploying etcd cluster
-  ✓ Deploying Kubernetes API server
-  ✓ Deploying Kubernetes controllers
-  ✓ Joining worker nodes
-  ✓ Installing Calico CNI
-  ✓ Installing OpenStack CSI driver
-
-Phase 3: GitOps Bootstrap (5-10 minutes)
-  ✓ Installing FluxCD controllers
-  ✓ Creating GitRepository sources
-  ✓ Deploying platform services
-  ✓ Waiting for services to be ready
-
-Cluster is ready!
-```
-
-Deploy consumes the already-published GitOps repository; it does not publish
-that repository for you. The operation is resumable, so after fixing a failed
-step, rerun `cluster deploy` for the same cluster.
-
-**Monitor progress:**
-
-```bash
-# In another terminal, watch cluster creation
-watch -n 5 'openstack server list | grep prod-cluster'
-
-# After Kubernetes is deployed, watch pods
-eval "$(opencenter cluster use prod-cluster --export-only)"
-watch -n 5 'kubectl get pods -A'
-```
-
-## Step 9: Verify Cluster
-
-Verify the cluster is working:
-
-```bash
-# Set kubeconfig from the cluster-owned path
-eval "$(opencenter cluster use prod-cluster --export-only)"
-
-# Check nodes
-kubectl get nodes
-
-# Expected output:
-# NAME                        STATUS   ROLES           AGE   VERSION
-# prod-cluster-master-1       Ready    control-plane   20m   v1.33.5
-# prod-cluster-master-2       Ready    control-plane   20m   v1.33.5
-# prod-cluster-master-3       Ready    control-plane   20m   v1.33.5
-# prod-cluster-worker-1       Ready    <none>          18m   v1.33.5
-# prod-cluster-worker-2       Ready    <none>          18m   v1.33.5
-# prod-cluster-worker-3       Ready    <none>          18m   v1.33.5
-
-# Check platform services
-kubectl get helmreleases -A
-
-# Expected output: 20+ HelmReleases in Ready state
-
-# Check FluxCD reconciliation
-flux get kustomizations
-
-# Expected output: All Kustomizations in Ready state
-```
-
-Flux reconciliation can continue after deployment returns. For targeted
-diagnosis, use:
-
-```bash
-flux get kustomizations -A
-flux get helmreleases -A
-flux get sources git -A
-flux logs --tail=50
-flux reconcile kustomization <name> --with-source
-```
-
-**All checks passed?** Your cluster is ready for production workloads!
-
-## Step 10: Access Services
-
-Access platform services via their hostnames:
-
-**Keycloak (Authentication):**
-
-```
-URL: https://auth.my-company.prod-cluster.sjc3.k8s.opencenter.cloud
-Username: admin
-Password: (from configuration file)
-```
-
-**Grafana (Monitoring):**
-
-```
-URL: https://grafana.my-company.prod-cluster.sjc3.k8s.opencenter.cloud
-Username: admin
-Password: (from configuration file)
-```
-
-**Headlamp (Dashboard):**
-
-```
-URL: https://dashboard.my-company.prod-cluster.sjc3.k8s.opencenter.cloud
-```
-
-**Harbor (Container Registry):**
-
-```
-URL: https://harbor.my-company.prod-cluster.sjc3.k8s.opencenter.cloud
-Username: admin
-Password: (from configuration file)
-```
-
-**DNS Configuration:**
-
-For production, configure DNS records:
-
-```
-auth.my-company.prod-cluster.sjc3.k8s.opencenter.cloud     → <load-balancer-ip>
-grafana.my-company.prod-cluster.sjc3.k8s.opencenter.cloud  → <load-balancer-ip>
-dashboard.my-company.prod-cluster.sjc3.k8s.opencenter.cloud → <load-balancer-ip>
-harbor.my-company.prod-cluster.sjc3.k8s.opencenter.cloud   → <load-balancer-ip>
-```
-
-Get load balancer IP:
-
-```bash
-kubectl get svc -n gateway gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-```
-
-## Check Your Work
-
-Verify everything is working:
-
-* [ ] All 6 nodes are Ready
-* [ ] All platform services are deployed (HelmReleases Ready)
-* [ ] FluxCD is reconciling (Kustomizations Ready)
-* [ ] Can access Keycloak UI
-* [ ] Can access Grafana UI
-* [ ] Can access Headlamp UI
-* [ ] DNS records configured (production only)
-
-## Troubleshooting
-
-### Validation Fails: Image ID Not Found
-
-**Error:**
-
-```
-Error: Image ID not found in OpenStack region sjc3
-Image ID: 799dcf97-3656-4361-8187-13ab1b295e33
-```
-
-**Solution:**
-
-```bash
-# List available Ubuntu images
-openstack image list --name Ubuntu
-
-# Update configuration with correct image ID
-opencenter cluster edit prod-cluster
-```
-
-### Validation Fails: Insufficient Quota
-
-**Error:**
-
-```
-Error: Insufficient compute quota
-Required: 6 instances, 24 vCPUs, 96 GB RAM
-Available: 2 instances, 8 vCPUs, 16 GB RAM
-```
-
-**Solution:**
-
-* Request quota increase from OpenStack administrator
-* Or reduce cluster size (fewer workers, smaller flavors)
-
-### Bootstrap Fails: OpenTofu Error
-
-**Error:**
-
-```
-Error: Error creating OpenStack server: Quota exceeded
-```
-
-**Solution:**
-
-```bash
-# Check current usage
-openstack quota show
-
-# Clean up any existing resources
-cd ~/prod-cluster-gitops/infrastructure/clusters/prod-cluster
-opentofu destroy
-
-# Retry bootstrap
-opencenter cluster deploy prod-cluster
-```
-
-### Services Not Deploying: FluxCD Error
-
-**Error:**
-
-```
-Kustomization cert-manager-base: reconciliation failed
-```
-
-**Solution:**
-
-```bash
-# Check FluxCD logs
-kubectl logs -n flux-system deployment/kustomize-controller
-
-# Check GitRepository status
-kubectl describe gitrepository opencenter-cert-manager -n flux-system
-
-# Force reconciliation
-flux reconcile kustomization cert-manager-base
-```
-
-## Next Steps
-
-Now that you have a production cluster, explore these topics:
-
-**Deploy Applications:**
-
-* [Customize Services](../operations/customize-services.md) - Configure platform services
-* [Manage Secrets](../operations/manage-secrets.md) - Encrypt and rotate secrets
-
-**Cluster Management:**
-
-* [Add Worker Pools](../operations/add-worker-pools.md) - Scale cluster capacity
-* [Backup and Restore](../operations/backup-and-restore.md) - Configure disaster recovery
-* [Upgrade Kubernetes](../operations/upgrade-kubernetes.md) - Upgrade cluster version
-
-**Multi-Cluster:**
-
-* [Multi-Cluster Management](multi-cluster-setup.md) - Manage multiple clusters
-
-**Understanding:**
-
-* [GitOps Workflow](../concepts/gitops-workflow.md) - How GitOps works
-* [Security Model](../concepts/security-model.md) - Security architecture
-
-## What You Learned
-
-In this tutorial, you:
-
-* Initialized an OpenStack cluster configuration
-* Configured OpenStack credentials and cluster settings
-* Validated configuration before deployment
-* Generated a complete GitOps repository
-* Deployed a production Kubernetes cluster
-* Verified cluster health and service deployment
-* Accessed platform services
-
-You now have a production-ready Kubernetes cluster on OpenStack with GitOps continuous delivery!
-
----
+Deployment runs the provider's configured steps and writes bootstrap logs and
+resume state under the openCenter state directory. The command returns its log
+path; use `--log` to select one explicitly. Use `--from-step` or `--restart`
+after diagnosing a failed run.
 
 ## Evidence
 
-This tutorial is based on:
-
-* OpenStack defaults: `internal/config/defaults.go:68-157`
-* Workflow validation: `tests/features/workflow.feature:1-73`
-* Provider documentation: [Infrastructure Providers](../providers/README.md) and [Infrastructure Providers Reference](../reference/providers.md)
-* Bootstrap process: `cmd/cluster_bootstrap.go`
-* GitOps structure: `internal/gitops/`, Ecosystem.md
-* Service configuration: `internal/config/defaults.go:293-388`
+- OpenStack command surface: `cmd/cluster_provider_openstack.go`
+- Initialization and configuration: `cmd/cluster_init.go`,
+  `cmd/cluster_configure.go`
+- Readiness rules: `internal/config/v2/readiness.go`
+- OpenStack lifecycle: `internal/cluster/bootstrap_provider_infra.go`
+- Provider workflow examples: `tests/features/workflow.feature`

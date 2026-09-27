@@ -16,11 +16,11 @@ tags: [providers, openstack, magnum, vmware, kind, baremetal]
 
 | Provider | CLI lifecycle status | Lifecycle implementation | Deployment-method validation | Drift registry |
 | --- | --- | --- | --- | --- |
-| OpenStack | Supported | Shared OpenTofu bootstrap; Kubespray is invoked by the generated infrastructure module | `kubespray` and `kamaji` are accepted when compatible | Detect plus limited reconciliation |
-| Magnum | Supported | Direct Magnum API create, poll, kubeconfig export, and delete | The deployment validator does not list Magnum as Kamaji-compatible | None |
-| VMware | Supported | Shared OpenTofu bootstrap with VMware-specific inputs | `kubespray` and `kamaji` are accepted when compatible | Detect only |
-| Kind | Supported for local/dev | Kind and kubectl lifecycle provider | `kubespray` is accepted; the live lifecycle is the dedicated Kind path | None |
-| Baremetal | Supported | Shared infrastructure bootstrap using pre-provisioned nodes | `kubespray` only; Kamaji is rejected | None |
+| OpenStack | Lifecycle implemented | Shared OpenTofu bootstrap; Kubespray is invoked by the generated infrastructure module | `kubespray` and `kamaji` are accepted when compatible | Detect plus limited reconciliation |
+| Magnum | Lifecycle implemented | Direct Magnum API create, kubeconfig export, and delete | The deployment validator does not list Magnum as Kamaji-compatible | None |
+| VMware | Lifecycle implemented | Shared OpenTofu bootstrap with VMware-specific inputs | `kubespray` and `kamaji` are accepted when compatible | Detect only |
+| Kind | Lifecycle implemented for local use | Kind and kubectl lifecycle provider | `kubespray` is accepted; the live lifecycle is the dedicated Kind path | None |
+| Baremetal | Lifecycle implemented | Shared infrastructure bootstrap using pre-provisioned nodes | `kubespray` only; Kamaji is rejected | None |
 | AWS, GCP, Azure | Schema/config support only | CLI availability gate rejects these as planned providers | Deployment validators contain compatibility rules, but that does not make the provider available | None |
 
 ## Magnum
@@ -28,7 +28,7 @@ tags: [providers, openstack, magnum, vmware, kind, baremetal]
 Magnum is a managed OpenStack Kubernetes provider backed by the OpenStack Magnum service, not by OpenTofu. The provider supports the following lifecycle operations:
 
 * `cluster configure` configures the Magnum provider settings.
-* `cluster deploy` creates a Magnum cluster from the configured existing cluster template, polls Magnum until the cluster is ready, and securely writes the resulting kubeconfig.
+* `cluster deploy` creates a Magnum cluster from the configured existing cluster template, obtains the resulting kubeconfig, and writes it to the cluster state path.
 * `cluster destroy` deletes the Magnum cluster.
 
 Configuration is stored under `opencenter.infrastructure.cloud.magnum` and requires a Keystone auth URL, region, project ID, application credential ID and secret, and a cluster template. Image, network, and COE choices are owned by the Magnum cluster template rather than duplicated in the provider configuration.
@@ -49,6 +49,9 @@ Magnum drift detection is not currently supported.
 * Use `vmware` in configuration, examples, and documentation.
 * Existing `vsphere` configuration values continue to load and validate as a compatibility alias.
 
-## Windows Support
+## Windows workers
 
-Windows worker guidance remains historical and is not part of the GA support boundary. The supported GA platform path is Linux control plane plus Linux workers.
+Windows worker fields remain part of the configuration model. Provider-specific
+requirements and whether a deployment path uses them are enforced by the
+provider and readiness validation code; this reference does not make a broader
+platform-support claim.

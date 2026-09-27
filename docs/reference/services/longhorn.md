@@ -1,62 +1,41 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-longhorn
 title: "Longhorn"
 sidebar_label: Longhorn
-description: Longhorn distributed block storage configuration, replica settings, and backup targets.
+description: Longhorn service configuration and built-in catalog rendering.
 doc_type: reference
 audience: "platform engineers, storage administrators"
-tags: [storage, block-storage, distributed, services]
+tags: [storage, longhorn, services]
 ---
 
-> **Purpose:** For platform engineers, documents Longhorn's configuration surface: replica settings, provisioning thresholds, and backup targets.
-
-## Overview
-
-Longhorn provides distributed block storage for Kubernetes, replicating volume data across nodes.
+> **Evidence:** `internal/config/services/longhorn.go`, `internal/config/v2/defaults.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
 
-```yaml
-opencenter:
-  services:
-    longhorn:
-      enabled: false                                    # default: false
-      namespace: longhorn-system                          # default: longhorn-system
-      hostname:                                            # default: longhorn.<cluster_fqdn>
-      default_replica_count: 3                             # default: 3
-      default_data_path: /var/lib/longhorn                 # default: /var/lib/longhorn
-      storage_over_provisioning_percentage: 200             # default: 200
-      storage_minimal_available_percentage: 25              # default: 25
-      backup_target:                                        # s3:// or nfs://
-      backup_target_credential_secret:
-```
+The generated default is disabled in `longhorn-system`; its generated hostname is `longhorn.<cluster FQDN>`. `LonghornConfig` adds hostname, replica, storage, and backup fields to `BaseConfig`.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether Longhorn is deployed |
-| `namespace` | string | `longhorn-system` | Namespace for Longhorn resources |
-| `hostname` | string | `longhorn.<cluster_fqdn>` (set by the CLI on enable) | UI ingress hostname |
-| `default_replica_count` | int | `3` | Number of replicas per volume |
-| `default_data_path` | string | `/var/lib/longhorn` | Node storage path for volume data |
-| `storage_over_provisioning_percentage` | int | `200` | Allowed over-provisioning percentage |
-| `storage_minimal_available_percentage` | int | `25` | Minimum available storage before scheduling stops |
-| `backup_target` | string | — | Backup destination (`s3://` or `nfs://`) |
-| `backup_target_credential_secret` | string | — | Secret name holding backup target credentials |
+| Field | Default in config metadata | Evidence |
+|-------|----------------------------|----------|
+| `enabled` | `false` | `NewDefaultServiceConfig` |
+| `namespace` | `longhorn-system` | `NewDefaultServiceConfig` |
+| `hostname` | generated from cluster FQDN | `NewDefaultServiceConfig` |
+| `default_replica_count` | `3` | `LonghornConfig` schema tag |
+| `default_data_path` | `/var/lib/longhorn` | `LonghornConfig` schema tag |
+| `storage_over_provisioning_percentage` | `200` | `LonghornConfig` schema tag |
+| `storage_minimal_available_percentage` | `25` | `LonghornConfig` schema tag |
+| `backup_target`, `backup_target_credential_secret` | empty | `LonghornConfig` |
 
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
+Common `BaseConfig` fields (`adoption_mode`, `source`, `image`, `address_pool`) are also available.
 
 ## Rendering
 
-`longhorn` has no dedicated YAML descriptor; it is rendered through the built-in render catalog, with an override Kustomization dependency on `sources`, `longhorn-base`, and `envoy-gateway-api-base`.
+The catalog uses base path `applications/base/services/longhorn`, an overlay-files renderer, override values `persistence.defaultClass: false`, and override dependencies `sources`, `longhorn-base`, and `envoy-gateway-api-base`. No explicit service descriptor is present.
 
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable longhorn
 opencenter cluster service disable longhorn
-opencenter cluster service status
 opencenter cluster service options longhorn
 ```

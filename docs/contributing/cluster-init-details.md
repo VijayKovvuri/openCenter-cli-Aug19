@@ -13,8 +13,9 @@ tags: [contributing]
 **Purpose:** For developers, explains how the Go code creates a native v2 cluster configuration during `opencenter cluster init`.
 
 This note describes how the current Go code creates a native v2 cluster
-configuration. It intentionally ignores the user-facing docs because several of
-them are stale.
+configuration. It is an implementation note; operator-facing concepts and
+paths are documented in [Configuration Lifecycle](../concepts/configuration-lifecycle.md)
+and [Secret and Config Separation](../concepts/security-update-design.md).
 
 ## Main distinction
 
@@ -134,16 +135,16 @@ base config is created.
 
 Path resolution is org-based and lives in `internal/core/paths/strategies.go`.
 
-For a cluster named `my-cluster` in org `my-org`, the resolved layout is:
+For a cluster named `my-cluster` in org `my-org`, the resolved secure-zone layout is:
 
 ```text
-<clustersDir>/my-org/.my-cluster-config.yaml
-<clustersDir>/my-org/infrastructure/clusters/my-cluster/
-<clustersDir>/my-org/applications/overlays/my-cluster/
-<clustersDir>/my-org/secrets/
-<clustersDir>/my-org/secrets/age/keys/my-cluster-key.txt
-<clustersDir>/my-org/secrets/ssh/my-cluster
-<clustersDir>/my-org/.sops.yaml
+<blueprintsDir>/my-org/my-cluster/my-cluster-config.yaml
+<gitopsDir>/my-org/infrastructure/clusters/my-cluster/
+<gitopsDir>/my-org/applications/overlays/my-cluster/
+<secretsDir>/my-org/my-cluster/age/keys/my-cluster-key.txt
+<secretsDir>/my-org/my-cluster/ssh/my-cluster
+<gitopsDir>/my-org/.sops.yaml
+<clusterStateDir>/my-org/my-cluster/kubeconfig.yaml
 ```
 
 The clusters root comes from `config.ResolveClustersDir`:
@@ -246,13 +247,13 @@ The command lives in `cmd/cluster_generate.go`; the main service flow lives in
 7. Validates generated manifests.
 8. Commits changes unless this is a dry run.
 
-The render step calls:
+The render step is staged through `gitops.GenerateClusterTree`, which plans
+application output, optional infrastructure output, optional provider
+materialization, validation, and ownership promotion:
 
 ```go
-gitops.CopyBase(cfg, true)
-gitops.RenderClusterApps(cfg)
-gitops.RenderInfrastructureCluster(cfg)
-tofu.Provision(cfg) // skipped for kind in SetupService
+gitops.GenerateClusterTree(ctx, cfg, generationOptions)
+// generationOptions.Materialize is set for providers other than kind and magnum
 ```
 
 `cluster generate --render-only` follows a similar render-only path in
@@ -266,12 +267,12 @@ cluster init / cluster configure --guided
   -> apply overrides
   -> resolve cluster-owned paths
   -> generate keys
-  -> write .<cluster>-config.yaml
+  -> write <blueprints-dir>/<org>/<cluster>/<cluster>-config.yaml
 
 cluster generate
   -> load .<cluster>-config.yaml
   -> render GitOps base
   -> render cluster apps
   -> render infrastructure cluster
-  -> render/provision OpenTofu
+  -> stage and promote GitOps output; materialize OpenTofu except for kind/magnum
 ```

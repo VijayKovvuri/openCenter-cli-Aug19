@@ -1,105 +1,65 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-gateway
 title: "Gateway"
 sidebar_label: Gateway
-description: Envoy Gateway implementation configuration fields, listeners, and defaults.
+description: Gateway service configuration, listener fields, and catalog rendering.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [networking, gateway, envoy, routing, tls, services]
+tags: [networking, gateway, services]
 ---
 
-> **Purpose:** For platform engineers and operators, documents the Envoy Gateway service configuration, covering listeners and defaults.
-
-## Overview
-
-`gateway` deploys an Envoy-based `Gateway` resource implementing the Kubernetes Gateway API, consuming the CRDs installed by [gateway-api](gateway-api.md).
+> **Evidence:** `internal/config/services/gateway.go`, `internal/config/v2/defaults.go`, `internal/services/plugins/registry.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
 
-```yaml
-opencenter:
-  services:
-    gateway:
-      enabled: true                        # default: true
-      namespace: gateway                   # default: gateway
-      gateway_name: rmpk-gateway           # default: rmpk-gateway
-      gateway_namespace: rackspace-system   # default: rackspace-system
-      gateway_class: eg                     # default: eg
-      default_issuer: ""
-      listeners:
-        - name: https
-          port: 443
-          protocol: HTTPS                  # HTTP | HTTPS
-          hostname: "*.example.com"
-          tls_secret_name: wildcard-tls
-```
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether the Gateway resource is deployed |
-| `namespace` | string | `gateway` | Namespace for the Gateway service records |
-| `gateway_name` | string | `rmpk-gateway` | Name of the generated `Gateway` resource (`GatewayConfig.GatewayName`) |
-| `gateway_namespace` | string | `rackspace-system` | Namespace the `Gateway` resource is created in |
-| `gateway_class` | string | `eg` | `GatewayClass` name |
-| `default_issuer` | string | — | Default cert-manager `ClusterIssuer` for listener TLS |
-| `listeners` | list of `GatewayListener` | `[]` | Listener definitions |
-| `listeners[].name` | string | required | Listener identifier |
-| `listeners[].port` | int | required | Port number |
-| `listeners[].protocol` | string | required | `HTTP` or `HTTPS` |
-| `listeners[].hostname` | string | — | Hostname pattern for the listener |
-| `listeners[].tls_secret_name` | string | — | TLS secret name (HTTPS listeners) |
-
-## Bring-your-own TLS
-
-By default the generated platform Gateway carries a `cert-manager.io/cluster-issuer`
-annotation and every HTTPS listener references a cert-manager-managed leaf Secret
-(`keycloak-tls`, `harbor-tls`, `longhorn-tls`, …). Operators who manage TLS
-themselves — a wildcard certificate, or pre-existing per-listener Secrets — can
-override this from cluster config instead of hand-editing the Gateway on-cluster
-(which drifts back on the next reconcile).
-
-Setting **any** bring-your-own option removes the `cert-manager.io/cluster-issuer`
-annotation from the Gateway so cert-manager no longer manages those leaves.
+`GatewayConfig` embeds `BaseConfig`, adds Gateway identity fields, optional bring-your-own TLS settings, and listeners. The generated default is enabled in `gateway`.
 
 ```yaml
 opencenter:
   services:
     gateway:
       enabled: true
+      namespace: gateway
+      gateway_name:
+      gateway_namespace:
+      gateway_class:
+      default_issuer:
       tls:
-        # A single pre-existing Secret (e.g. a wildcard cert) for every HTTPS listener.
-        wildcard_secret_name: star-rax-io-tls
-        # Optional namespace of the referenced Secret(s).
-        secret_namespace: rackspace-system
-        # Override specific listeners by logical name; wins over the wildcard.
-        per_listener_secrets:
-          harbor: harbor-byo-tls
+        wildcard_secret_name:
+        secret_namespace:
+        per_listener_secrets: {}
+      listeners:
+        - name:
+          port: 443
+          protocol: HTTPS
+          hostname:
+          tls_secret_name:
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `tls.wildcard_secret_name` | string | — | One pre-existing TLS Secret used by every HTTPS listener; drops the cert-manager annotation |
-| `tls.secret_namespace` | string | — | Namespace of the pre-existing Secret(s); empty means same-namespace lookup |
-| `tls.per_listener_secrets` | map | — | Override the TLS Secret for specific listeners by logical name (`keycloak`, `gitops`, `headlamp`, `prometheus`, `alertmanager`, `grafana`, `harbor`, `longhorn`) |
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `true` | `NewDefaultServiceConfig` |
+| `namespace` | `gateway` | `NewDefaultServiceConfig` |
+| `gateway_name`, `gateway_namespace`, `gateway_class`, `default_issuer` | empty in config type | `GatewayConfig` |
+| `tls.*` | absent | `GatewayTLSConfig` |
+| `listeners[].name`, `port`, `protocol` | required by schema tags | `GatewayListener` |
+| `listeners[].hostname`, `tls_secret_name` | empty | `GatewayListener` |
 
-Precedence for each HTTPS listener: `per_listener_secrets[<listener>]`, then
-`wildcard_secret_name`, then the built-in `<service>-tls` default. When no `tls`
-block is configured the output is unchanged.
+## Runtime TLS behavior
 
-## Dependencies
+`GatewayConfig.IsBYO` is true when a wildcard or per-listener secret is configured; the generator then omits the cert-manager annotation. `TLSSecretFor` resolves a per-listener secret, then the wildcard, then its supplied built-in default. `secret_namespace` is returned separately and is empty when unset.
 
-None enforced by `opencenter cluster service enable|disable`, though `gateway` is functionally dependent on `gateway-api`'s CRDs being present. The render catalog lists `envoy-gateway-api-base` as an extra rendering-order dependency for `gateway`.
+## Rendering and dependencies
 
-## Rendering
+The plugin registry records `gateway-api`; the catalog records `envoy-gateway-api-base`. The catalog marks Gateway as single-stage and names `namespace.yaml`, `gateway-class.yaml`, `gateway.yaml`, and `envoy-proxy-config.yaml` as generated resources. No service descriptor file names `gateway`.
 
-`gateway` has no dedicated YAML descriptor; it is rendered as a single-stage entry in the built-in render catalog (`internal/gitops/render_catalog.go`), which generates `namespace.yaml`, `gateway-class.yaml`, `gateway.yaml`, and `envoy-proxy-config.yaml` from a fixed Kustomization content template rather than Helm values.
-
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable gateway
 opencenter cluster service disable gateway
-opencenter cluster service status
 opencenter cluster service options gateway
 ```

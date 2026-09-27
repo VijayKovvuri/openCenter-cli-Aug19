@@ -102,17 +102,16 @@ A failure at any stage returns immediately with a stage-tagged error (for exampl
 opencenter cluster generate my-cluster
 ```
 
-`internal/cluster.SetupService.Setup` loads and validates configuration, then calls `internal/gitops` directly:
+`internal/cluster.SetupService.Setup` loads and validates configuration, then
+calls `gitops.GenerateClusterTree` with staged-generation options:
 
 ```
-1. gitops.CopyBase               — copy the base repository structure
-2. gitops.RenderClusterAppsWithEncryption
-                                  — render application descriptors/catalog actions,
-                                    encrypt overlay values before promotion
-3. gitops.RenderInfrastructureCluster
-                                  — render provider-selected infrastructure assets
-4. gitops.RenderClusterFluxBridge — render the per-cluster Flux bridge
-5. tofu.Provision                — non-Kind providers only
+1. Stage the base repository and application output in a private workspace.
+2. Plan descriptor/catalog actions and encrypt overlay values before promotion.
+3. Render provider-selected infrastructure assets when requested.
+4. Render the per-cluster Flux bridge.
+5. Materialize OpenTofu for providers other than Kind and Magnum, then validate
+   and promote the staged tree.
 ```
 
 Generated files are tracked by repository-relative SHA-256 and mode records in the version-2 ledger `.opencenter/ownership/clusters/<cluster>.json`; exact repository-wide generated files are recorded separately in version-2 `.opencenter/ownership/global.json`. The cluster ledger covers only the active cluster's explicit scopes — `applications/overlays/<cluster>/`, `infrastructure/clusters/<cluster>/`, and `clusters/<cluster>/` — with `clusters/<cluster>/flux-system/` reserved for Flux bootstrap and excluded. The generated bridge files beside that Flux directory remain in the cluster scope. The global ledger is an exact allowlist (`.gitignore`, `README.md`, and the two repository `.gitkeep` files), not a recursive root scope. Applications-only and single-service renders update and prune only their active scope, preserving sibling cluster records and unrelated state; they do not rewrite global ownership. Missing staged defaults may seed `custom/` files, but existing custom content and hash-verified secret-sync artifacts are outside generator ownership.

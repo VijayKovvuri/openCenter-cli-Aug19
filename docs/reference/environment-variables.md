@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: environment-variables
 title: "Environment Variables"
 sidebar_label: Environment Variables
@@ -11,6 +11,11 @@ tags: [environment, variables, configuration, cli]
 # Environment Variables
 
 **Purpose:** For all users, documents every environment variable openCenter CLI recognizes. Every variable below was confirmed with a source grep (`os.Getenv`/`os.LookupEnv`) against `internal/` and `cmd/`; none are invented.
+
+`OPENCENTER_CONFIG_DIR` selects the directory, not a file name. The CLI settings
+manager uses `<config-dir>/settings.yaml`; cluster-init's compatibility loader
+also reads `<config-dir>/config.yaml` for `cluster_defaults` (see [Default
+Values](default-values.md)).
 
 ## Path-resolution variables
 

@@ -40,7 +40,7 @@ An earlier design added three more steps — `kubespray-venv-create`, `kubespray
 
 > The OpenTofu module for this provider already embeds a `null_resource.run_kubespray` with a `local-exec` provisioner that runs the full Ansible/Kubespray playbook as part of `opentofu-apply`. Appending these steps caused Ansible to run a second time against a cluster that was already provisioned, wasting ~1h of deploy time.
 
-So today, for `deployment.method: kubespray`, the Kubespray run happens **inside** `opentofu-apply` (step 2 above), not as its own step. The tracked long-term fix is to remove the `null_resource.run_kubespray` local-exec from the OpenTofu templates so OpenTofu only provisions infrastructure and a dedicated step owns the Ansible run exclusively — if you're touching bootstrap sequencing, check whether that fix has landed before trusting a "kubespray step" description anywhere else.
+So today, for `deployment.method: kubespray`, the Kubespray run happens **inside** `opentofu-apply` (step 3 above), not as its own step. The tracked long-term fix is to remove the `null_resource.run_kubespray` local-exec from the OpenTofu templates so OpenTofu only provisions infrastructure and a dedicated step owns the Ansible run exclusively — if you're touching bootstrap sequencing, check whether that fix has landed before trusting a "kubespray step" description anywhere else.
 
 ## State and resume
 

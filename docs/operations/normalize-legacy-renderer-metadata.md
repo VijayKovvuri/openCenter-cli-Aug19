@@ -1,67 +1,41 @@
 ---
-last_updated: 2026-09-24
 id: normalize-legacy-renderer-metadata
-title: "Normalize Legacy v2 Renderer Metadata"
-sidebar_label: Normalize Legacy Renderer Metadata
-description: How to remove legacy v2 renderer metadata from a cluster configuration before validation and generation.
+title: Normalize a legacy configuration
+sidebar_label: Normalize a legacy configuration
+description: Normalize an existing openCenter configuration and review its generated defaults.
 doc_type: how-to
-audience: "platform engineers, operators"
-tags: [configuration, normalization, migration, rendering]
+audience: openCenter operators
+tags: [migration, configuration]
+last_updated: 2026-09-25
 ---
-# Normalize Legacy v2 Renderer Metadata
+# Normalize a legacy configuration
 
-**Purpose:** For operators maintaining older v2 cluster files, explains how to
-remove internal renderer metadata while preserving supported typed service
-configuration.
+Use `cluster normalize` to load an existing configuration with defaults and
+write missing fields back to the file. Existing values are preserved.
 
-Older v2 files may contain renderer selection, topology, or raw override keys
-that are no longer public configuration. The v2 load/normalize path removes
-those keys; the supported replacement is a typed service field or a file under
-the service overlay's user-owned `custom/` directory.
+```bash
+opencenter cluster normalize ORG/CLUSTER
+```
 
-## Procedure
+The command creates a timestamped `<config-file>.backup.<timestamp>` before
+writing unless `--no-backup` is supplied. Preview it without writing:
 
-1. Run a dry run to review the normalization summary. The command reports the
-   file path, current and normalized byte counts, approximate added bytes, and
-   whether a backup would be created; it does not print a YAML diff or the
-   proposed normalized content:
+```bash
+opencenter --dry-run cluster normalize ORG/CLUSTER
+```
 
-   ```bash
-   opencenter cluster normalize my-cluster --dry-run
-   ```
+After reviewing the result, validate and regenerate:
 
-2. Normalize the file. The command creates a timestamped backup before writing:
+```bash
+opencenter cluster validate ORG/CLUSTER
+opencenter cluster generate ORG/CLUSTER
+```
 
-   ```bash
-   opencenter cluster normalize my-cluster
-   ```
+Use `cluster set` for intentional individual edits; normalize is for missing
+default fields, not for selecting arbitrary values.
 
-   Use `org/my-cluster` when the cluster identifier requires an organization
-   prefix. Normalization may also add missing default fields; existing supported
-   values are preserved.
+## Evidence
 
-3. Validate the normalized configuration:
-
-   ```bash
-   opencenter cluster validate my-cluster
-   ```
-
-4. Regenerate the GitOps output and review the resulting diff:
-
-   ```bash
-   opencenter cluster generate my-cluster --dry-run
-   ```
-
-## After normalization
-
-Do not re-add `renderer`, `single_stage`, `base_only`, `source_name`,
-`override_values_renderer`, `overlay_files_renderer`, or raw `override_values`
-keys. Use the service's documented typed fields for supported settings. Put
-additional hand-authored manifests or values in `custom/`; do not edit
-renderer-owned generated files.
-
-If normalization produces an unexpected result, compare the file with its
-`.backup.<timestamp>` copy, correct only supported fields, and repeat validation.
-See [Customize Services](customize-services.md) for the supported customization
-boundary and [Configuration Schema](../reference/configuration-schema.md) for
-service fields.
+- Command behavior: `cmd/cluster_normalize.go`
+- Normalization tests: `cmd/cluster_normalize_test.go`
+- v2 serialization: `internal/config/v2/public_serialization.go`

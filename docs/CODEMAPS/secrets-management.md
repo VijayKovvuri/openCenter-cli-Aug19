@@ -1,85 +1,71 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: secrets-management-map
 title: "Explain Secrets Management Boundaries"
 sidebar_label: Secrets Management
-description: Explains logical secret ownership, encrypted manifest synchronization, SOPS overlay values, key lifecycle state, and the boundaries between these workflows.
+description: "Execution map for logical secret planning, encrypted Kubernetes manifest synchronization, SOPS overlay encryption, and key lifecycle boundaries."
 doc_type: explanation
 audience: "contributors, maintainers, operators"
 tags: [secrets, sops, age, encryption, ownership]
 ---
 # Secrets management
 
-Secret handling has two related but distinct flows:
+There are three related but distinct flows: neutral secret-artifact planning, encrypted Kubernetes-manifest synchronization, and SOPS/Age file encryption. Backend CRUD (Barbican/file/SOPS) is a fourth command boundary.
 
-1. `internal/secrets` synchronizes configuration secrets into encrypted Kubernetes manifests and tracks ownership/state.
-2. `internal/sops` encrypts provider and GitOps overlay values and manages SOPS/Age file operations.
+## Feature → subsystem → symbol
 
-`internal/secretartifacts` plans the physical manifest targets before either renderer or backend performs materialization.
+| Feature | Subsystem / package | File → symbol | Dependencies and evidence |
+|---|---|---|---|
+| Command surface | Cobra / `cmd` | [`cmd/secrets.go`](../../cmd/secrets.go) → `NewSecretsCmd`; [`cmd/secrets_sync.go`](../../cmd/secrets_sync.go) → `newSecretsSyncCmd`, `runClusterSyncSecrets` | Backend CRUD, sync, validate, encrypt/decrypt/status, and `keys` are separate registrations; [`cmd/secrets_router_test.go`](../../cmd/secrets_router_test.go) |
+| Logical artifact planning | neutral planner / `internal/secretartifacts` | [`internal/secretartifacts/planner.go`](../../internal/secretartifacts/planner.go) → `Plan`, `ValidateTargets` | v2 config, typed secret blocks, `service_secrets`; [`internal/secretartifacts/planner_test.go`](../../internal/secretartifacts/planner_test.go) |
+| Manifest synchronization | secret manager / `internal/secrets` | [`internal/secrets/manager.go`](../../internal/secrets/manager.go) → `DefaultSecretsManager.SyncSecrets`, `syncServiceManifestOutcome` | artifact planner, SOPS manager, Age key, overlay lock, ownership state; [`internal/secrets/manager_sync_test.go`](../../internal/secrets/manager_sync_test.go) |
+| Transaction rollback | secret manager / `internal/secrets` | [`internal/secrets/manager.go`](../../internal/secrets/manager.go) → mutation journal/reconcile methods; [`internal/secrets/rollback.go`](../../internal/secrets/rollback.go) → `RollbackManager` | snapshots, journal, hash state, rollback window; [`internal/secrets/rollback_test.go`](../../internal/secrets/rollback_test.go) |
+| Key lifecycle | key subsystem / `internal/secrets` | [`internal/secrets/registry.go`](../../internal/secrets/registry.go) → `NewDefaultKeyRegistry`; [`internal/secrets/rotation.go`](../../internal/secrets/rotation.go), `revocation.go`, `reconcile.go` | SOPS/Age key manager and registry state; [`internal/secrets/rotation_test.go`](../../internal/secrets/rotation_test.go) |
+| SOPS overlays | encryption / `internal/sops` | [`internal/sops/overlay_files.go`](../../internal/sops/overlay_files.go) → `overlayFilesToEncrypt`, `serviceOverrideValuesFilesToEncrypt`; [`internal/sops/manager.go`](../../internal/sops/manager.go) → `EncryptOverlayFiles`, `EncryptServiceOverrideValues` | provider-specific files and credential-bearing overrides; [`cmd/secrets_sops_test.go`](../../cmd/secrets_sops_test.go) |
+| Security/audit | cross-cutting / `internal/security` | [`internal/security/credential_masker.go`](../../internal/security/credential_masker.go), [`internal/security/audit_logger.go`](../../internal/security/audit_logger.go) | Redaction, sanitized commands, HMAC audit events; security tests |
 
-## Manifest synchronization flow
-
-```text
-v2.Config.Secrets
-  -> secretartifacts.Plan
-       logical owners -> normalized target service/path -> merged payload
-  -> secrets.DefaultSecretsManager.SyncSecrets
-       acquire per-overlay lock
-       load prior ownership state
-       refuse unsafe/unowned adoption
-       encrypt/write each physical manifest
-       journal mutations and reconcile stale artifacts
-       persist ownership hashes/state
-       audit result
-```
-
-`secretartifacts.Plan` maps logical owners to physical artifacts. For example, Grafana data targets the `kube-prometheus-stack` artifact and multiple owners may merge only when normalized keys do not conflict. Planning is deterministic and validates target services.
-
-## Transaction and drift behavior
-
-`internal/secrets/manager.go` provides locked transactional sync. It snapshots files, journals mutations, writes encrypted output, records ownership hashes, and rolls back through the rollback window when a mutation fails. Validation decrypts manifests and compares them with config, reporting drift, missing manifests, orphaned artifacts, and security issues.
-
-Ownership state is separate from payload data. It prevents adopting an existing unowned or unsafe file and allows stale generator-owned artifacts to be identified without treating arbitrary user files as generated output.
-
-## SOPS overlay flow
+## Actual manifest synchronization path
 
 ```text
-cluster config
-  -> SOPS manager selects provider/GitOps overlay files
-  -> Age/SOPS encryptor writes encrypted values
-  -> generated overlay promotion
+secrets sync
+  -> initializeSecretsManager
+  -> DefaultSecretsManager.SyncSecrets
+       -> load v2 config
+       -> secretartifacts.Plan
+       -> resolve overlay + Age key
+       -> acquire per-overlay lock (non-dry-run)
+       -> load previous ownership
+       -> refuse unsafe/unowned adoption
+       -> encrypt/write each artifact
+       -> journal and rollback on mutation failure
+       -> reconcile stale artifacts
+       -> persist ownership hashes/state and audit result
 ```
 
-This is not the same as secret manifest sync. The SOPS manager handles file-level encryption, `.sops.yaml` generation/validation, Age key storage, and encryption checks. `SetupService` uses an overlay encryption hook before promoting generated application output. Both `internal/sops/manager.go` and `internal/sops/git.go` select the ordered list of overlay files to encrypt through one shared function, `overlayFilesToEncrypt` in `internal/sops/overlay_files.go`: it always includes the Flux bootstrap and base-repo source files, adds provider-specific credential files for OpenStack and vSphere, and adds `services/<name>/helm-values/override-values.yaml` for any service whose rendered Helm values may embed credentials (`openstack-ccm`/`openstack-csi` on OpenStack, plus `loki`, `tempo`, `mimir`, `headlamp`, `harbor`). Missing files (a disabled service, or a file not yet generated) are silently skipped by the encryption callers.
+Artifacts are grouped by physical target path. Grafana targets `kube-prometheus-stack`; owners merge only when canonical keys and values do not conflict. The manager refuses an existing unowned or unsafe file rather than silently adopting it. Dry-run plans/reports without mutating files.
 
-## OpenStack storage credential boundary
+## Actual SOPS path
 
-`cluster service storage plan/apply` is a separate one-service provisioning path. [`internal/cluster/storage/openstack`](../../internal/cluster/storage/openstack) plans Swift application credentials or project-scoped EC2 credentials, container/bucket actions, typed service wiring, and recovery state. It does not encrypt Kubernetes manifests, update secret-artifact ownership, or run the SOPS manager. Existing complete credential pairs are reused unless `--rotate-credentials` is supplied; dry-run performs preflight only and does not invoke remote mutations.
+```text
+SetupService or secrets encrypt
+  -> SOPS manager
+  -> overlayFilesToEncrypt / serviceOverrideValuesFilesToEncrypt
+  -> Age/SOPS encrypt full selected files
+  -> staged generation promotion or explicit file operation
+```
 
-The resulting credential values can later be consumed by rendering and secret-artifact workflows, but provisioning them here does not itself reconcile the encrypted manifest tree.
+The ordered compatibility set always includes Flux bootstrap/base-repo files, adds OpenStack or vSphere credential files by provider, and adds credential-bearing service override values. Missing generated files are skipped by callers. This file-level encryption is not `secrets sync` manifest generation.
 
-## CLI boundary
+OpenStack storage plan/apply creates/reuses remote credentials and writes typed config; it does not call `secretartifacts.Plan`, update secret ownership, or run SOPS. The credentials can be consumed by a later render/sync flow.
 
-The production command surface groups key lifecycle under `secrets keys`: `generate`, `rotate`, `backup`, `validate`, `check`, `revoke`, `reconcile`, and `set-primary`. Manifest operations are `secrets sync` and `secrets validate`; file operations are `secrets encrypt`, `decrypt`, and `status`.
+## Safe-change boundaries
 
-Backend-oriented commands (`login`, `list`, `describe`, `get`, `set`, `delete`) are separate from SOPS manifest synchronization. Do not collapse backend CRUD, SOPS file encryption, and generated Kubernetes manifest sync into one lifecycle.
-
-## Package ownership
-
-| Package | Responsibility |
-|---|---|
-| `internal/secretartifacts` | Pure logical-owner to physical-artifact planning, normalization, deterministic merge, and target validation |
-| `internal/secrets` | Sync, validation, key registry, rotation/revocation, reconciliation, hooks, multi-cluster coordination, rollback, and audit calls |
-| `internal/cluster/storage/openstack` | OpenStack storage mappings, credential creation/reuse/rotation, recovery, and typed config persistence; not encrypted manifest sync |
-| `internal/sops` | SOPS/Age encryption engine, key manager, overlay encryption, and repository SOPS configuration |
-| `internal/barbican` | OpenStack Key Manager client used by backend-specific secret flows |
-| `internal/security` | Credential masking, command sanitization, and audit primitives used by secret operations |
+- Keep logical planning independent of backend and renderer; preserve deterministic target paths, owner lists, canonical key conflict checks, and target enablement.
+- Keep encrypted manifest sync transactional and ownership-aware; do not overwrite arbitrary existing files or bypass the overlay lock.
+- Preserve SOPS file selection and full-file encryption for credential-bearing overrides; never place plaintext credentials in generated GitOps output.
+- Keep backend CRUD, SOPS files, manifest sync, and key lifecycle as separate command and package boundaries.
+- Any new service secret must be traced through typed config, artifact planning, SOPS selection if needed, renderer output, ownership state, and focused tests.
 
 ## Related maps
 
-- When adding a service, trace its logical secret requirements through artifact planning, SOPS file selection, and ownership state using [Adding a built-in service](../contributing/adding-a-built-in-service.md#4-wire-secrets-and-ownership).
-- [Rendering ownership and secret artifacts](rendering-ownership-and-secret-artifacts.md) — planner/renderer contract
-- [OpenStack provider and storage operations](openstack-provider-storage-operations.md) — provider and storage credential boundary
-- [GitOps engine](gitops-engine.md) — overlay encryption during generation
-- [Config system](config-system.md) — secret input model and paths
-- [CLI commands](cli-commands.md) — command registration
+[Rendering ownership](rendering-ownership-and-secret-artifacts.md) · [GitOps engine](gitops-engine.md) · [OpenStack operations](openstack-provider-storage-operations.md) · [Config system](config-system.md) · [CLI commands](cli-commands.md)

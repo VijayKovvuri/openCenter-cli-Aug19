@@ -1,250 +1,53 @@
 ---
-last_updated: 2026-09-24
-id: deploy-cluster
-title: "Deploy a New Cluster"
-sidebar_label: Deploy a New Cluster
-description: Step-by-step guide to initialize, configure, validate, and deploy a new Kubernetes cluster with openCenter.
+id: deploy-openstack-cluster
+title: Deploy from a cluster file
+sidebar_label: Deploy from a cluster file
+description: Validate, generate, and deploy assets from an openCenter cluster file.
 doc_type: how-to
-audience: "operators, platform engineers"
-tags: [deploy, cluster, openstack, gitops, bootstrap]
+audience: openCenter operators
+tags: [deployment, gitops]
+last_updated: 2026-09-25
 ---
-# Deploy a New Cluster
+# Deploy from a cluster file
 
-**Purpose:** For operators, shows how to deploy a new Kubernetes cluster from scratch using openCenter, covering initialization through bootstrap.
-
-## Prerequisites
-
-* openCenter CLI built and available (`mise run build`)
-* A provisioned Git repository for GitOps (GitHub, Gitea, or similar)
-* A GitHub personal access token (or equivalent) with write access to the repository
-* Infrastructure credentials for your target provider (OpenStack in this example)
-* An OpenStack `clouds.yaml` profile with read access to images, networks, subnets, and availability zones
-
-## 1. Initialize the cluster configuration
-
-Create a new configuration file with provider-appropriate defaults. The `--org` flag sets the organization namespace and `--type` selects the infrastructure provider.
+The deploy workflow is provider-independent at the CLI boundary. Configure and
+validate first, then generate the GitOps assets before invoking deploy.
 
 ```bash
-opencenter cluster init services-2026-02-0d --org opencenter-cloud --type openstack
+opencenter cluster init demo --org my-org --type openstack
+opencenter cluster edit my-org/demo
+opencenter cluster validate my-org/demo
+opencenter cluster generate my-org/demo
+opencenter cluster deploy my-org/demo
 ```
 
-This creates the configuration at:
+Use `cluster use my-org/demo` to make the final argument optional. Use
+`cluster describe` to find the configured GitOps and state paths.
 
-```
-~/.config/opencenter/clusters/opencenter-cloud/.services-2026-02-0d-config.yaml
-```
-
-The file includes sensible defaults for Kubernetes version, node counts, CNI, and platform services. Edit it to match your environment before proceeding.
-
-**Evidence:** `cmd/cluster_init.go`, `internal/config/defaults/`
-
-## 2. Set the active cluster
-
-Select the cluster so subsequent commands operate on it without requiring the name each time:
+## Preview and resume
 
 ```bash
-opencenter cluster use opencenter-cloud/services-2026-02-0d
+opencenter --dry-run cluster deploy my-org/demo
+opencenter cluster deploy my-org/demo --step STEP_ID
+opencenter cluster deploy my-org/demo --from-step STEP_ID
+opencenter cluster deploy my-org/demo --restart
 ```
 
-Verify the selection:
+`--step` and `--from-step` are mutually exclusive. The operation is resumable;
+the command reports a bootstrap log and saved state path when applicable.
 
-```bash
-opencenter cluster use
-```
+## GitOps working tree behavior
 
-The output shows cluster metadata, GitOps paths, and environment setup commands.
+Before a non-dry-run deploy, the command checks the configured local GitOps
+working tree and, when a remote URL is configured, verifies the `origin` URL.
+Resolve a warning or mismatch in the checkout before retrying.
 
-**Evidence:** `cmd/cluster_use.go`
+## Evidence boundary
 
-## 3. Plan and apply OpenStack provider settings
+The repository's end-to-end workflow is marked `@wip` because infrastructure
+is not available in its test harness. Therefore this page documents command
+ordering and flags, not successful cloud provisioning or service readiness.
 
-Use the built-in provider workflow to discover unambiguous images, networks, subnets, and availability zones. Planning performs read-only discovery:
-
-```bash
-opencenter cluster provider openstack plan opencenter-cloud/services-2026-02-0d \
-  --os-cloud flex-dfw-dev
-```
-
-Apply the reviewed typed patch locally:
-
-```bash
-opencenter cluster provider openstack apply opencenter-cloud/services-2026-02-0d \
-  --os-cloud flex-dfw-dev --yes
-```
-
-Populated provider values are preserved as authoritative unless an explicit selector or import requests a different value; conflicting explicit replacements require `--replace`. Blank or placeholder values are filled from unambiguous discovery, and ambiguous resources require an explicit selector such as `--image-id` or `--network-id`. Provider apply does not create or mutate OpenStack resources.
-
-If the internal network and subnet should be created and managed by generated OpenTofu, pass `--create-internal-network` to both provider plan and apply. This bypasses internal network/subnet ambiguity, clears their top-level and nested mirrors, and reports `internal_network_mode: tofu-managed`; use `--replace` when existing internal selections must be cleared. The flag cannot be combined with `--network-id` or `--subnet-id`, and is incompatible with a configured `networking.vlan.id`.
-
-When a configured service needs OpenStack object storage, provision it explicitly one service at a time:
-
-```bash
-opencenter cluster service storage apply loki \
-  --cluster opencenter-cloud/services-2026-02-0d \
-  --backend swift --os-cloud flex-dfw-dev --yes
-```
-
-## 4. Set GitOps and secrets configuration
-
-Configure the GitOps repository URL, authentication token, and any required secrets using dot-notation paths:
-
-```bash
-opencenter cluster set opencenter.gitops.repository.url=https://github.com/opencenter-cloud/token-test-repo.git
-opencenter cluster set opencenter.gitops.auth.token.token=$(cat ~/.config/opencenter/github_token.env)
-opencenter cluster set secrets.keycloak.admin_password=$(openssl rand -base64 16)
-```
-
-Each `cluster set` call updates the active cluster’s configuration file in place.
-
-**What these values control:**
-
-| Path | Purpose |
-| --- | --- |
-| `opencenter.gitops.repository.url` | Remote Git repository where generated manifests are pushed |
-| `opencenter.gitops.auth.token.token` | Authentication token for FluxCD to pull from the repository |
-| `secrets.keycloak.admin_password` | Admin password for the Keycloak identity service |
-
-**Evidence:** `cmd/cluster_set.go`
-
-## 5. Validate the configuration
-
-Run validation to catch errors before committing to a deployment:
-
-```bash
-opencenter cluster validate
-```
-
-Validation checks:
-
-* JSON schema compliance (structure, types, required fields)
-* Cross-field dependencies (e.g., VRRP IP required when Octavia is disabled)
-* GitOps repository URL format and auth configuration
-* Network configuration (CIDR ranges, subnet overlaps)
-* SOPS encryption key availability
-
-A passing result looks like:
-
-```
-✓ Validation successful
-
-Cluster: opencenter-cloud/services-2026-02-0d
-Organization: opencenter-cloud
-Provider: openstack
-Validation mode: offline
-
-Summary: passed
-```
-
-For provider connectivity checks (image IDs, flavor availability, quota limits), use online mode:
-
-```bash
-opencenter cluster validate --validation online
-```
-
-Fix any reported errors before continuing. See [Validate Configuration](validate-configuration.md) for error resolution guidance.
-
-**Evidence:** `cmd/cluster_validate.go`, `internal/config/validator.go`
-
-## 6. Generate the GitOps repository
-
-Render templates and create the GitOps repository structure:
-
-```bash
-opencenter cluster generate
-```
-
-This produces the full directory layout under the configured `local_dir`:
-
-```
-<git_dir>/
-├── applications/
-│   └── overlays/services-2026-02-0d/
-│       ├── flux-system/           # FluxCD bootstrap manifests
-│       ├── services/              # Platform service Kustomizations and overrides
-│       └── managed-services/      # Application manifests
-└── infrastructure/
-    └── clusters/services-2026-02-0d/
-        ├── main.tf                # OpenTofu/Terraform configuration
-        ├── inventory/             # Kubespray Ansible inventory
-        └── credentials/           # Provider credentials (SOPS-encrypted)
-```
-
-Use `--force` to overwrite an existing repository. Use `--render-only` to render templates without running the full repository setup.
-
-**Evidence:** `cmd/cluster_generate.go`, `internal/gitops/`
-
-## 7. Preview the deploy plan (optional)
-
-Inspect what the deploy will do without making changes:
-
-```bash
-opencenter cluster deploy --dry-run
-```
-
-The dry run prints the ordered list of deploy steps, their dependencies, and the commands each step executes. Review this to confirm the plan matches your expectations.
-
-## 8. Deploy the cluster
-
-Run the full deployment:
-
-```bash
-opencenter cluster deploy
-```
-
-The deploy process is **resumable**. If a step fails, fix the underlying issue and re-run `opencenter cluster deploy` -- it picks up from the last saved state.
-
-### Deploy phases
-
-| Phase | Duration | What happens |
-| --- | --- | --- |
-| Infrastructure | 5--10 min | Provisions VMs, networks, security groups, load balancers via OpenTofu |
-| Kubernetes | 10--15 min | Installs container runtime, deploys control plane and workers via Kubespray |
-| GitOps | 2--5 min | Bootstraps FluxCD, creates GitRepository and Kustomization resources |
-| Services | 10--20 min | FluxCD reconciles platform services (cert-manager, Keycloak, Prometheus, etc.) |
-
-### Useful flags
-
-| Flag | Purpose |
-| --- | --- |
-| `--restart` | Ignore saved state and rerun all steps from the beginning |
-| `--step <id>` | Run a single deploy step by ID |
-| `--from-step <id>` | Resume from a specific step instead of the last saved state |
-| `--debug` | Print step details before each step runs |
-| `--confirm-commit` | Prompt before auto-committing uncommitted GitOps changes |
-| `--break-lock` | Force-remove an existing operation lock |
-
-**Evidence:** `cmd/cluster_deploy.go`, `internal/cluster/bootstrap.go`
-
-## Verification
-
-After deploy completes, confirm the cluster is healthy:
-
-```bash
-# Check node status
-export KUBECONFIG=<git_dir>/infrastructure/clusters/services-2026-02-0d/kubeconfig.yaml
-kubectl get nodes
-
-# Check FluxCD reconciliation
-kubectl get kustomizations -n flux-system
-
-# Check platform services
-kubectl get helmreleases -A
-```
-
-All nodes should report `Ready`, all Kustomizations should show `Ready: True`, and HelmReleases should show `deployed`.
-
-## Troubleshooting
-
-**Validation fails:** Read the error messages -- they include the field path and expected value. Common issues: missing credentials, overlapping CIDRs, missing VRRP IP. See [Validate Configuration](validate-configuration.md).
-
-**Deploy step fails:** Check the bootstrap log printed at failure. Fix the issue and re-run `opencenter cluster deploy` to resume. Use `--debug` for step-level detail.
-
-**GitOps dirty tree error:** The deploy requires a clean Git working tree. Commit or stash changes in the GitOps directory, or use `--confirm-commit` to auto-commit before deploy.
-
-**Remote origin mismatch:** If the GitOps directory’s `origin` remote doesn’t match `opencenter.gitops.repository.url`, update it:
-
-```bash
-git -C <git_dir> remote set-url origin <correct-url>
-```
-
-See [Troubleshoot Deployment](troubleshoot-deployment.md) for additional scenarios.
+- Workflow: `tests/features/workflow.feature`
+- Command definitions: `cmd/cluster_init.go`, `cmd/cluster_use.go`,
+  `cmd/cluster_validate.go`, `cmd/cluster_generate.go`, `cmd/cluster_deploy.go`

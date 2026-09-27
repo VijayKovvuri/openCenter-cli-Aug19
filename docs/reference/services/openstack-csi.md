@@ -1,48 +1,44 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-openstack-csi
 title: "OpenStack Cinder CSI"
 sidebar_label: OpenStack CSI
-description: OpenStack Cinder CSI driver configuration and defaults.
+description: OpenStack CSI service configuration and catalog ownership.
 doc_type: reference
 audience: "platform engineers, storage administrators"
 tags: [openstack, storage, csi, services]
 ---
 
-> **Purpose:** For platform engineers on OpenStack, documents the Cinder CSI driver's configuration surface.
-
-## Overview
-
-`openstack-csi` provides dynamic volume provisioning backed by OpenStack Cinder. It has no service-specific configuration beyond the shared `BaseConfig` fields (`internal/config/services/default_services.go` registers it as `DefaultServiceConfig`); it uses the cluster's OpenStack infrastructure credentials.
+> **Evidence:** `internal/config/services/default_services.go`, `internal/config/v2/defaults.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
+
+`openstack-csi` uses `DefaultServiceConfig`. The generated default is enabled in `openstack-csi`.
 
 ```yaml
 opencenter:
   services:
     openstack-csi:
-      enabled: true                 # default: true
-      namespace: openstack-csi       # default: openstack-csi
+      enabled: true
+      namespace: openstack-csi
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether the Cinder CSI driver is deployed |
-| `namespace` | string | `openstack-csi` | Namespace for CSI driver resources |
-
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `true` | `NewDefaultServiceConfig` |
+| `namespace` | `openstack-csi` | `NewDefaultServiceConfig` |
+| common fields | — | `BaseConfig` |
 
 ## Rendering
 
-`openstack-csi` has no dedicated YAML descriptor; it is rendered through the built-in render catalog.
+The catalog entry marks OpenStack CSI as namespace-stage and privileged, with base path `applications/base/services/openstack-csi`, override values, and override dependencies `sources` and `openstack-csi-namespace`. No explicit service descriptor is present.
 
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable openstack-csi
 opencenter cluster service disable openstack-csi
-opencenter cluster service status
 opencenter cluster service options openstack-csi
 ```

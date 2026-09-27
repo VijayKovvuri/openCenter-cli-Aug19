@@ -1,76 +1,54 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-vsphere-csi
 title: "vSphere CSI Driver"
 sidebar_label: vSphere CSI
-description: VMware vSphere CSI driver configuration, storage classes, secrets, and defaults.
+description: vSphere CSI service configuration, storage classes, and catalog rendering.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [storage, vsphere, vmware, csi, services]
+tags: [storage, vsphere, csi, services]
 ---
 
-> **Purpose:** For platform engineers and operators, documents the vSphere CSI driver's configuration surface for VMware environments.
-
-## Overview
-
-`vsphere-csi` provides dynamic volume provisioning backed by VMware vSphere datastores.
+> **Evidence:** `internal/config/services/vsphere_csi.go`, `internal/config/v2/defaults.go`, `internal/config/v2/config.go`, and `internal/gitops/render_catalog.go`.
 
 ## Configuration
+
+The generated default is disabled in `vmware-system-csi`. `VSphereCSIConfig` adds `storage_classes` to `BaseConfig`.
 
 ```yaml
 opencenter:
   services:
     vsphere-csi:
-      enabled: false                        # default: false
-      namespace: vmware-system-csi           # default: vmware-system-csi
+      enabled: false
+      namespace: vmware-system-csi
       storage_classes:
-        - name: vsphere-default
-          datastore_url: "ds:///vmfs/volumes/datastore1/"
-          reclaim_policy: Retain              # Retain | Delete, default: Retain
-          volume_binding_mode: Immediate       # Immediate | WaitForFirstConsumer, default: Immediate
-          allow_expansion: true                # default: true
+        - name:
+          datastore_url:
+          reclaim_policy: Retain
+          volume_binding_mode: Immediate
+          allow_expansion: true
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether the vSphere CSI driver is deployed |
-| `namespace` | string | `vmware-system-csi` | Namespace for CSI resources |
-| `storage_classes` | list of `VSphereStorageClass` | — | Storage class definitions |
-| `storage_classes[].name` | string | required | StorageClass name |
-| `storage_classes[].datastore_url` | string | required | vSphere datastore URL |
-| `storage_classes[].reclaim_policy` | string | `Retain` | `Retain` or `Delete` |
-| `storage_classes[].volume_binding_mode` | string | `Immediate` | `Immediate` or `WaitForFirstConsumer` |
-| `storage_classes[].allow_expansion` | bool | `true` | Allow online volume expansion |
-
-## Secrets
-
-`schema/opencenter-v2.schema.json` defines `secrets.vsphere_csi`:
-
-```yaml
-secrets:
-  vsphere_csi:
-    vcenter_host:
-    username:
-    password:
-    datacenters:
-    insecure_flag:
-    port:
-    datastoreurl:
-```
-
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`.
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `false` | `NewDefaultServiceConfig` |
+| `namespace` | `vmware-system-csi` | `NewDefaultServiceConfig` |
+| `storage_classes[].name`, `datastore_url` | required fields | `VSphereStorageClass` |
+| `reclaim_policy` | `Retain` in schema tag | `VSphereStorageClass` |
+| `volume_binding_mode` | `Immediate` in schema tag | `VSphereStorageClass` |
+| `allow_expansion` | true in schema tag | `VSphereStorageClass` |
+| `secrets.vsphere_csi.*` | fields declared | `VSphereCsiSecrets` |
 
 ## Rendering
 
-`vsphere-csi` has no dedicated YAML descriptor; if enabled, it is rendered through the built-in render catalog.
+The catalog entry uses namespace `vmware-system-csi`, base path `applications/base/services/vsphere-csi`, and an override-values renderer. No explicit service descriptor is present.
 
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable vsphere-csi
 opencenter cluster service disable vsphere-csi
-opencenter cluster service status
 opencenter cluster service options vsphere-csi
 ```

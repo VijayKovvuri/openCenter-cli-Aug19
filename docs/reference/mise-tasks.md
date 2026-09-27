@@ -22,6 +22,7 @@ tags: [mise, build, tasks, reference]
 | `kind` | `latest` |
 | `helm` | `latest` |
 | `sops` | `3.13.3` |
+| `pre-commit` | `latest` |
 | `go:golang.org/x/vuln/cmd/govulncheck` | `latest` |
 | `aqua:gitleaks/gitleaks` | `latest` |
 
@@ -57,7 +58,8 @@ tags: [mise, build, tasks, reference]
 | `test-build` | `go build ./...` |
 | `test-remediation` | `go test ./internal/sops ./internal/secrets ./internal/secretartifacts ./internal/gitops ./cmd -count=1` |
 | `test-remediation-race` | `go test -race ./internal/secrets -run 'TestSyncSecretsSerializesConcurrentTransactions\|TestReconcileStateWriteFailureRollsBackAllMutationsAndRetry' -count=3` |
-| `test-docs` | `go test -tags tools ./cmd/docs -count=1` |
+| `test-docs` | `go test -tags tools ./cmd/docs -count=1`, plus repository-only documentation checks for maintained Markdown, links, frontmatter, and Mermaid fences; it does not publish or render documentation. |
+| `test-go-all` | Local `go test ./... -count=1 -timeout 15m` sweep; on failure, a transient failure log is written under `.tmp/` for diagnosis, not kept as a repository artifact. |
 | `test-kustomize` | `go test ./internal/gitops -run '^TestGeneratedDefaultOverlayKustomizeFailureMatrix$' -count=1` |
 | `test-diff` | `git diff --check` |
 | `godog` | `go test ./tests/features/steps/... -v -- --godog.tags=~@wip --godog.paths=tests/features` |
@@ -68,14 +70,14 @@ tags: [mise, build, tasks, reference]
 | `gitleaks` | `gitleaks detect --source . -c .gitleaks.toml --redact --no-banner` |
 | `integration` | Runs `TestClusterSetup` (`./cmd`), then `TestRetry\|TestCircuitBreaker\|TestLockManager\|TestProperty` (`./internal/resilience/...`), then `TestDriftDetector\|TestBackupManager\|TestProperty` (`./internal/operations/...`) |
 | `perf` | `go test -tags perf ./internal/config -run "TestMemoryUsageRegression" -count=1` |
-| `test:all` | `test`, `test-race`, `vet`, `godog`, `property`, `govulncheck` |
+| `test:all` | `test`, `test-race`, `vet`, `godog`, `property`, `govulncheck`; separate from the local full-package `test-go-all` sweep and repository-only `test-docs` checks |
 | `verify` | `test`, `test-race`, `test-properties`, `govulncheck` |
 | `test-remediation-all` | `test-build`, `vet`, `test`, `test-remediation`, `test-race`, `test-remediation-race`, `godog`, `test-docs`, `test-kustomize`, `test-docs-idempotency`, `test-docs-frontmatter-remediation`, `test-diff` |
-| `schema` | `./bin/opencenter cluster schema --pretty --out schema/cluster.schema.json` |
-| `schema-gen` | `go run ./cmd/schema-gen/main.go --version 2.0 --output schema/cluster.schema.json` |
-| `schema-v2` | Writes and runs a throwaway `TestRegenSchema` against `internal/config/v2schema`, writes `schema/opencenter-v2.schema.json`, deletes the test file |
+| `schema` | Legacy schema task definition; use `schema-v2` for the checked-in v2 schema. |
+| `schema-gen` | **Unavailable:** legacy command flow invokes `./cmd/schema-gen/main.go`, which is not present in the current tree. |
+| `schema-v2` | Writes and runs a throwaway `TestRegenSchema` against `internal/config/v2schema`, writes `schema/opencenter-v2.schema.json`, deletes the test file; this is the task for the checked-in v2 schema |
 | `validate` | `./bin/opencenter cluster validate` |
-| `schema-verify` | Build, generate schema, `cluster init`/`update`/`validate` against `OPENCENTER_CONFIG_DIR=./testdata/config`, then run `mise run test` and `mise run godog` |
+| `schema-verify` | **Unavailable as a supported workflow:** legacy end-to-end helper with an obsolete update step; do not use it. |
 | `docs-gen` | `go run cmd/docs/generate.go` |
 | `test-docs-idempotency` | Runs `docs-gen` twice, diffs the two results, fails if unstable |
 | `test-docs-frontmatter` | `python3 hack/scripts/audit_doc_frontmatter.py --strict` across maintained Markdown pages |
@@ -103,3 +105,22 @@ mise run --dry-run <name>    # show what would run
 ```
 
 See [Testing Guide](../contributing/testing-guide.md) for which of these tasks CI actually runs, and [GitHub Actions Workflows](github-actions-workflows.md) for the workflows themselves.
+
+## Legacy command references in task definitions
+
+The following task bodies are still present in `.mise.toml`, but their command
+names are not in the current built-in CLI command tree. Treat them as task
+maintenance items rather than supported CLI examples:
+
+* `schema` is a legacy task definition; use `schema-v2` for
+  `schema/opencenter-v2.schema.json`.
+* `schema-gen` is unavailable because its `cmd/schema-gen/main.go` entrypoint
+  is not present in the current tree.
+* `schema-verify` is unavailable as a supported workflow because its command
+  flow contains an obsolete update step.
+* `terraform-generate` is a legacy helper; use `cluster generate`.
+* `preflight` is the local validation wrapper.
+* `kind-cleanup` checks for the named cluster before cleanup.
+
+For current command spelling and flags, use the generated [CLI command
+reference](cli-commands.md).

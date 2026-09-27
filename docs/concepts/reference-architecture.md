@@ -16,7 +16,7 @@ This document describes the recommended infrastructure foundation for openCenter
 
 ## Architecture
 
-openCenter deploys a Kubernetes platform through a layered architecture. Each layer has a clear owner and a defined interface to the layer above it. The exact mechanics differ by provider: OpenStack, VMware, and bare metal share a Kubespray-driven bootstrap (with Kamaji available as an alternative hosted-control-plane deployment method); Magnum instead delegates cluster creation to the OpenStack Magnum service and does not use OpenTofu.
+openCenter deploys a Kubernetes platform through a layered architecture. Each layer has a clear owner and a defined interface to the layer above it. The exact mechanics differ by provider: OpenStack, VMware, and bare metal share a Kubespray-driven bootstrap; Kind uses its dedicated local bootstrap; Magnum delegates cluster creation to the OpenStack Magnum service and does not use OpenTofu.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -30,8 +30,8 @@ openCenter deploys a Kubernetes platform through a layered architecture. Each la
 │  helm-controller · notification-controller               │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 3: Kubernetes Cluster                              │
-│  Kubespray (OpenStack/VMware/bare metal) or Kamaji         │
-│  (hosted control plane) or Magnum (OpenStack-managed)      │
+│  Kubespray (OpenStack/VMware/bare metal), Kind, or         │
+│  Magnum (OpenStack-managed)                                │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 2: Infrastructure (OpenTofu / pre-provisioned;      │
 │  not applicable to Magnum)                                 │
@@ -43,13 +43,13 @@ openCenter deploys a Kubernetes platform through a layered architecture. Each la
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Evidence:** `docs/reference/providers.md`, `docs/CODEMAPS/providers.md`, `internal/cluster/provider/openstack/`, `internal/cluster/magnum_bootstrap_provider.go`, `internal/config/v2/deployment_validator.go` (Kamaji constraints)
+**Evidence:** `docs/reference/providers.md`, `docs/CODEMAPS/providers.md`, `internal/cluster/bootstrap_provider_infra.go`, `internal/cluster/kind_bootstrap_provider.go`, `internal/cluster/magnum_bootstrap_provider.go`
 
 ### Design Principles
 
 These principles shaped every architectural decision:
 
-* **Configuration as code.** A single YAML file (validated against `schema/opencenter-v2.schema.json`) defines the cluster. No manual steps between configuration and deployment for the Kubespray/Kamaji path.
+* **Configuration as code.** A single YAML file (validated against `schema/opencenter-v2.schema.json`) defines the cluster. The live bootstrap paths consume that configuration for provider-specific provisioning and initialization.
 * **GitOps as the operational model.** Git is the source of truth. FluxCD reconciles desired state continuously. Changes flow through commits, not `kubectl apply`.
 * **Defense in depth.** Security controls exist at multiple layers (CLI input validation, secrets encryption, cluster admission, platform policy). See [Security Model](security-model.md).
 * **Provider abstraction, with one exception.** The same configuration structure works across OpenStack, VMware, bare metal, and Kind. Magnum is deliberately different: it is backed by the OpenStack Magnum service rather than OpenTofu, and image/network/COE choices come from the Magnum cluster template rather than from openCenter's own infrastructure fields.
@@ -122,7 +122,7 @@ OpenStack is the most automated provider. openCenter provisions all infrastructu
 
 Key characteristics:
 
-* Automated VM provisioning via OpenTofu, or via Kamaji as an alternative hosted-control-plane method (Kamaji requires `master_count: 0`, `vrrp_enabled: false`, and `kube_vip_enabled: false` — `internal/config/v2/deployment_validator.go`)
+* Automated VM provisioning via OpenTofu; the generated infrastructure module invokes the Kubespray playbook through its `local-exec` provisioner (`internal/cluster/bootstrap_provider_infra.go`)
 * Cinder CSI for persistent volumes; default storage class is `csi-cinder-sc-delete` and default boot-volume type is `HA-Standard` (`internal/config/v2/defaults.go`)
 * `loadbalancer_provider` defaults to `"ovn"` (Neutron/OVN load balancer); `octavia` is also a supported value for API/service load balancing, and `vrrp_enabled`/`kube_vip_enabled` both default to `true` for VIP-based API HA
 * Optional Designate DNS integration (`infrastructure.networking.use_designate`)
@@ -408,7 +408,7 @@ Every cluster requires at least one DNS nameserver and one NTP server:
 
 ```yaml
 opencenter:
-  cluster:
+  infrastructure:
     networking:
       dns_nameservers:
         - "10.0.0.53"        # Internal DNS preferred
@@ -424,7 +424,11 @@ Use internal DNS and NTP servers when available. Public servers are acceptable f
 
 ## Add-ons and Default Service Set
 
-openCenter ships roughly 30 schema-defined services (`opencenter.services.*`). At `cluster init` time, `internal/config/v2/defaults.go` materializes a subset of these with real defaults; the rest exist in the schema but are not part of the generated default set. The table below is split by that real distinction rather than by an unverified "GA vs. preview" maturity label.
+The schema defines named platform services under `opencenter.services.*`. At
+`cluster init` time, `internal/config/v2/defaults.go` materializes a subset with
+real defaults; the rest exist in the schema but are not part of the generated
+default set. The table below is split by that real distinction rather than by
+an unverified "GA vs. preview" maturity label.
 
 ### Enabled by default (OpenStack / VMware / bare metal)
 
@@ -466,13 +470,17 @@ These require an explicit `enabled: true` after `cluster init`:
 
 ### CNI alternatives (Calico is default)
 
-Cilium and Kube-OVN are real, schema-backed CNI options — see `internal/services/plugins/cilium.go`, `kube_ovn.go`, and `cluster.kubernetes.network_plugin.{cilium,kube-ovn}` — but neither has a service plugin comment or config flag marking it "preview," and neither is part of `defaultServiceMap`/`NewDefaultServiceConfig`'s default set. In practice this means: Calico is what a new cluster gets unless you explicitly configure a different CNI plugin.
+Cilium and Kube-OVN are real, schema-backed CNI options under
+`cluster.kubernetes.network_plugin.{cilium,kube-ovn}`, but neither is part of
+`defaultServiceMap`/`NewDefaultServiceConfig`'s default set. In practice this
+means: Calico is what a new cluster gets unless you explicitly configure a
+different CNI plugin.
 
 ### Not implemented in this codebase
 
 A grep of this repository found no trace of the following, so they are omitted rather than described as roadmap items: Istio, Talos Linux (in fact, `opencenter.talos` is explicitly rejected — `internal/config/v2/validator.go`: `"opencenter.talos is not supported in v2; remove the opencenter.talos section"` — and `internal/gitops/copy.go` skips any `talos/` template directory with the comment "Talos is no longer supported"), `openCenter-AirGap`, and `openCenter-customer-app-example`. Windows worker pools, by contrast, **are** real and implemented (see [Configure Compute for the Base Cluster](#configure-compute-for-the-base-cluster)) — only the separate `opencenter-windows` Ansible-collection repository referenced by some historical docs has no trace in this codebase.
 
-**Evidence:** `internal/config/v2/defaults.go` (`NewDefaultServiceConfig`, `defaultServiceMap`, `applyProviderBehaviorDefaults`), `internal/services/plugins/cilium.go`, `internal/services/plugins/kube_ovn.go`, `internal/config/v2/validator.go`, `internal/gitops/copy.go`
+**Evidence:** `internal/config/v2/defaults.go` (`NewDefaultServiceConfig`, `defaultServiceMap`, `applyProviderBehaviorDefaults`), `internal/config/v2/validator.go`, `internal/gitops/copy.go`, `schema/opencenter-v2.schema.json`
 
 ## Container Image Reference
 
@@ -520,7 +528,10 @@ Boot volume size defaults to 40 GB for both control plane and worker nodes (`inf
 | Workers | 0 | 3 |
 | Windows workers | 0 | 0 |
 
-A `master_count: 0` configuration is valid but only for the Kamaji hosted-control-plane deployment method, which requires it (`internal/config/v2/deployment_validator.go`).
+The live Kubespray bootstrap requires at least one control-plane node; Kind has
+its own provider-specific node defaults. Deployment-method validation also
+contains configuration-only method values that are not wired to a bootstrap
+provider, so those values should not be read as supported deploy paths.
 
 ### Additional Worker Pools
 
@@ -645,7 +656,7 @@ Separately, `opencenter.services.calico`/`cilium`/`kube-ovn` are platform-servic
 
 `infrastructure.networking.loadbalancer_provider` is a single enum field, not an independent per-environment choice — valid values are `ovn` (default), `octavia`, `metallb`, and `cloud-native`. Whichever value is set there is orthogonal to whether the `services.metallb` platform service is enabled (it defaults to `disabled` and must be turned on explicitly if `metallb` is the chosen load-balancer provider).
 
-**Evidence:** `internal/config/v2/cluster.go` (`NetworkPluginConfig`, `CalicoConfig`, `CiliumConfig`, `KubeOVNConfig`), `internal/config/v2/infrastructure.go` (`LoadbalancerProvider`), `internal/services/plugins/cilium.go`, `kube_ovn.go`
+**Evidence:** `internal/config/v2/cluster.go` (`NetworkPluginConfig`, `CalicoConfig`, `CiliumConfig`, `KubeOVNConfig`), `internal/config/v2/infrastructure.go` (`LoadbalancerProvider`), `schema/opencenter-v2.schema.json`, `internal/gitops/render_catalog.go`
 
 ## Deploy Ingress Resources
 
@@ -745,8 +756,8 @@ Developer writes secret → SOPS encrypts (Age key) → Git commit (ciphertext)
 
 | Key Type | Default expiration | Local storage |
 | --- | --- | --- |
-| Age encryption key | 90 days | `~/.config/opencenter/clusters/<cluster>/secrets/age/<cluster>_keys.txt` |
-| SSH deploy key | 180 days | `~/.config/opencenter/clusters/<cluster>/secrets/ssh/` |
+| Age encryption key | 90 days | `<secrets-dir>/<organization>/<cluster>/age/keys/<cluster>-key.txt` |
+| SSH deploy key | 180 days | `<secrets-dir>/<organization>/<cluster>/ssh/<cluster>` (with `.pub` alongside it) |
 
 Rotation uses a dual-key strategy: the new key encrypts new secrets while the old key remains valid for decryption, ensuring zero-downtime rotation. See [Security Model](security-model.md) for the full key-registry and rotation-state model.
 
@@ -915,7 +926,7 @@ This document does not assert specific recovery-time figures (RTOs), since none 
 Because cluster configuration lives in Git, a rebuild follows the same steps as an initial deploy:
 
 1. Provision infrastructure (OpenTofu, for OpenStack/VMware/bare metal) or recreate the Magnum cluster
-2. Deploy Kubernetes (Kubespray, Kamaji, or Magnum, depending on the chosen path)
+2. Deploy Kubernetes through the selected live provider path (Kubespray, Kind, or Magnum)
 3. Bootstrap FluxCD, pointing at the same Git repository
 4. FluxCD reconciles all services and applications
 5. Restore persistent data from etcd-backup/Velero backups, if those were enabled and running
@@ -1091,7 +1102,7 @@ This document is based on:
 * Configuration schema: `schema/opencenter-v2.schema.json`
 * Provider-region defaults: `internal/config/defaults/openstack.go`, `interfaces.go`
 * Provider implementations and boundaries: `internal/cloud/{openstack,vmware,kind,magnum}/`, `internal/cluster/provider/openstack/`, `internal/cluster/magnum_bootstrap_provider.go`
-* CNI/service plugins: `internal/services/plugins/cilium.go`, `kube_ovn.go`
+* CNI configuration and service rendering: `internal/config/v2/`, `internal/config/services/`, `internal/gitops/render_catalog.go`
 * GitOps templates: `internal/gitops/templates/cluster-apps-base/`, `internal/gitops/templates/infrastructure-cluster-template/`, `internal/gitops/copy.go`
 * SOPS/secrets management: `internal/sops/manager.go`, `internal/secrets/registry.go`, `rotation.go`
 * CLI commands: `cmd/cluster_*.go`, `cmd/secrets_*.go`

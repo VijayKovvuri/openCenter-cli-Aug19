@@ -1,9 +1,9 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: configuration-precedence
 title: "Configuration Precedence"
 sidebar_label: Configuration Precedence
-description: The two distinct precedence systems in openCenter -- cluster-config field merging, and CLI-tool path resolution.
+description: The two distinct precedence systems in openCenter -- generic configuration-file merging, and CLI-tool path resolution.
 doc_type: reference
 audience: "operators, developers"
 tags: [configuration, precedence, cli, reference]
@@ -12,9 +12,11 @@ tags: [configuration, precedence, cli, reference]
 
 **Purpose:** For operators and developers, explains how openCenter resolves a value when it could come from more than one place. There are two independent precedence systems -- do not conflate them.
 
-## 1. Cluster-config field precedence (`internal/config/flags/configuration_merger.go`)
+## 1. Generic configuration-file merging (`internal/config/flags/configuration_merger.go`)
 
-When building or updating a cluster's configuration, individual field values can originate from more than one source. `DefaultConfigurationMerger` merges them in this order, lowest to highest precedence:
+`DefaultConfigurationMerger` is the generic merger used by `CLIIntegration.applyConfigFileFlags` when CLI flag handling loads and combines configuration files. It is **not** the general cluster-init layering pipeline. `InitService` instead loads an explicit `--config-file` or creates a v2 default, then applies initialization options in `loadOrCreateConfig` and `applyOverrides`; that path does not call `DefaultConfigurationMerger`.
+
+The merger's default strategy orders source types as follows, lowest to highest precedence:
 
 ```
 SourceDefault  (lowest)
@@ -23,12 +25,7 @@ SourceTemplate
 SourceCLI      (highest -- CLI flags always win)
 ```
 
-* **`SourceDefault`** -- built-in defaults (`internal/config/v2/defaults.go`'s `NewV2Default`/`NewV2FullTemplate` and friends).
-* **`SourceFile`** -- values loaded from an existing `.<cluster>-config.yaml` (or an explicit `--config-file`).
-* **`SourceTemplate`** -- values applied from a named template (`--type <provider>` at `cluster init`, or an explicit template selection).
-* **`SourceCLI`** -- values supplied directly as CLI flags, including dotted override flags (e.g. `opencenter.infrastructure.compute.worker_count=5` on `cluster init`/`cluster set`). These always take precedence over anything from a file, template, or default.
-
-This is the precedence you're using when you run, e.g., `opencenter cluster init my-cluster --type openstack opencenter.infrastructure.compute.worker_count=5`: the default v2 config is built, provider-specific (OpenStack) template defaults are layered on, and the explicit `worker_count=5` CLI override wins over both.
+The source types are generic merger metadata. A particular caller may provide only a subset of them; their presence should not be inferred from this strategy.
 
 `InitService.applyOverrides` (see [Cluster Init Details](../contributing/cluster-init-details.md)) also tracks which values were set explicitly (a map of "was this key touched by the user") specifically so that later path-resolution and Git-auth-default logic never silently overwrites a user-supplied value.
 
@@ -38,7 +35,7 @@ This is a *completely separate* precedence system that resolves *where on disk* 
 
 ```
 1. The role's OPENCENTER_<X>_DIR environment variable, if set
-2. The matching paths.<x>Dir value in ~/.config/opencenter/config.yaml (the CLI settings file)
+2. The matching `paths.<x>Dir` value in `<config-dir>/settings.yaml` (the CLI settings file)
 3. A computed default (usually <clustersDir>/<role>, or a platform-specific base for clustersDir/configDir/stateDir themselves)
 ```
 
@@ -48,6 +45,6 @@ No environment variable overrides a cluster-config *field* value directly -- env
 
 ## Practical implications
 
-* Changing `OPENCENTER_CONFIG_DIR` mid-project does not change any value inside an already-loaded cluster config file; it changes which `config.yaml`/`clusters/` tree the CLI looks at next.
-* A dotted CLI override on `cluster init`/`cluster set` always beats whatever is in the file or template -- if a value looks wrong after running one of these commands, check the exact flags passed before suspecting a stale file.
-* `cluster configure --guided` reuses the same `InitService` internals (`createDefaultConfig`, `applyOverrides`, `updateConfigPaths`) when no config exists yet, so the same `SourceDefault -> SourceFile -> SourceTemplate -> SourceCLI` precedence applies there too.
+* Changing `OPENCENTER_CONFIG_DIR` mid-project does not change any value inside an already-loaded cluster config file; it changes which `settings.yaml`/`clusters/` tree the CLI looks at next. Cluster-init defaults have a separate compatibility read of `<config-dir>/config.yaml`; see [Default Values](default-values.md).
+* A dotted CLI override on `cluster init`/`cluster set` is applied by the command's override path. If a value looks wrong after one of these commands, check the exact flags passed before suspecting a stale file.
+* `cluster configure --guided` reuses `InitService`'s `createDefaultConfig`, `applyOverrides`, and `updateConfigPaths` when no config exists yet. It therefore follows that initialization path, not the generic merger's source list.

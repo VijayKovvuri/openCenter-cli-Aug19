@@ -1,48 +1,44 @@
 ---
-last_updated: 2026-09-24
+last_updated: 2026-09-25
 id: service-fluxcd
 title: "FluxCD"
 sidebar_label: FluxCD
-description: Core GitOps reconciliation service configuration and structural rendering.
+description: FluxCD service configuration and structural catalog ownership.
 doc_type: reference
 audience: "platform engineers, operators"
-tags: [gitops, flux, continuous-delivery, core, services]
+tags: [gitops, flux, services]
 ---
 
-> **Purpose:** For platform engineers, documents the FluxCD core service and how it is treated structurally by the renderer.
-
-## Overview
-
-FluxCD is the GitOps reconciliation engine. It has no service-specific configuration beyond the shared `BaseConfig` fields (`internal/config/services/default_services.go` registers it as `DefaultServiceConfig`).
+> **Evidence:** `internal/config/services/default_services.go`, `internal/config/v2/defaults.go`, `internal/services/plugins/registry.go`, `internal/gitops/render_catalog.go`, and `internal/services/descriptors/data/*-fluxcd-aggregate.yaml`.
 
 ## Configuration
+
+FluxCD uses `DefaultServiceConfig`; the generated default is enabled in `flux-system`.
 
 ```yaml
 opencenter:
   services:
     fluxcd:
-      enabled: true             # default: true
-      namespace: flux-system     # default: flux-system
+      enabled: true
+      namespace: flux-system
+      adoption_mode: managed
+      address_pool:
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether FluxCD is deployed |
-| `namespace` | string | `flux-system` | Namespace for Flux controllers |
-
-## Dependencies
-
-None enforced by `opencenter cluster service enable|disable`. Because almost every other service's generated Flux `Kustomization` depends on Flux itself being installed, disabling `fluxcd` in a generated cluster effectively breaks GitOps reconciliation cluster-wide, even though the CLI does not reject the change.
+| Field | Default | Evidence |
+|-------|---------|----------|
+| `enabled` | `true` | `NewDefaultServiceConfig` |
+| `namespace` | `flux-system` | `NewDefaultServiceConfig` |
+| common fields | — | `BaseConfig` |
 
 ## Rendering
 
-`fluxcd` is treated as structural: `internal/gitops/auto_descriptor.go` special-cases `fluxcd` (alongside [sources](sources.md)) so it is never routed through the generic auto-descriptor or render-catalog lookup used by other services, even though the built-in render catalog also carries a `RenderSpec` entry for it. Its Flux self-management manifests come from the root/aggregate descriptors (`internal/services/descriptors/data/root-overlay.yaml` and the `*-fluxcd-aggregate.yaml` descriptors).
+The catalog gives FluxCD an override-values stage and base path `applications/base/services/fluxcd`. `auto_descriptor.go` treats it as structural. Descriptor facts are split across `root-overlay.yaml` and the services/managed-services Flux aggregate descriptors; these list Kustomization, sources, monitoring, and Flux config templates. The plugin registry records no dependency.
 
-## CLI commands
+## Commands
 
 ```bash
 opencenter cluster service enable fluxcd
 opencenter cluster service disable fluxcd
-opencenter cluster service status
 opencenter cluster service options fluxcd
 ```

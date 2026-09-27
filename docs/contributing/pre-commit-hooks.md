@@ -17,8 +17,8 @@ mise install
 mise run install-hooks
 ```
 
-`install-hooks` invokes `pre-commit install --config .pre-commit-config.yaml`; it
-does not merely check whether an old `.git/hooks/pre-commit` file exists. The
+`install-hooks` installs the tracked pre-commit configuration; it does not
+merely check whether an old `.git/hooks/pre-commit` file exists. The
 configuration keeps the gitleaks hook and also runs the staged documentation
 policy.
 
