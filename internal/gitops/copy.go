@@ -235,6 +235,18 @@ func renderTemplateAtomic(path, dst string, cfg v2.Config, workspace *GitOpsWork
 		return false
 	}
 
+	// secretArtifactMaterialized lets explicit service templates (currently
+	// Harbor) add a generated Secret only after secrets sync has materialized
+	// and recorded the artifact. This keeps the first render valid while still
+	// promoting the Secret into the overlay on the next render.
+	funcMap["secretArtifactMaterialized"] = func(serviceName string) bool {
+		artifacts, err := secretartifacts.Plan(&cfg)
+		if err != nil {
+			return false
+		}
+		return secretArtifactTargetMaterialized(cfg, serviceName, artifacts)
+	}
+
 	// autoServices returns service names that use auto-descriptors (no explicit
 	// descriptor) and own their own source (not shared). Used by aggregate templates
 	// to include dynamically-added services.

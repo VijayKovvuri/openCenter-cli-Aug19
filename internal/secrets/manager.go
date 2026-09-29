@@ -1827,6 +1827,18 @@ func (m *DefaultSecretsManager) generateSecretManifest(
 	if metadata["name"] == nil {
 		metadata["name"] = m.generateSecretName(service)
 	}
+	// Final Helm values Secrets are consumed directly by the Harbor and Loki
+	// HelmReleases. Keep their namespace and Flux watch label on the generated
+	// manifest instead of relying on an incidental overlay default.
+	if namespace, ok := finalValuesSecretNamespace(service); ok {
+		metadata["namespace"] = namespace
+		labels, _ := metadata["labels"].(map[string]interface{})
+		if labels == nil {
+			labels = make(map[string]interface{})
+		}
+		labels["reconcile.fluxcd.io/watch"] = "Enabled"
+		metadata["labels"] = labels
+	}
 	manifest["metadata"] = metadata
 
 	// Generate data section with secrets
@@ -1839,6 +1851,17 @@ func (m *DefaultSecretsManager) generateSecretManifest(
 	manifest["stringData"] = data
 
 	return manifest
+}
+
+func finalValuesSecretNamespace(service string) (string, bool) {
+	switch service {
+	case "harbor":
+		return "harbor", true
+	case "loki":
+		return "observability", true
+	default:
+		return "", false
+	}
 }
 
 // generateSecretName generates a Kubernetes Secret name from a service name.

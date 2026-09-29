@@ -61,7 +61,7 @@ func Plan(cfg *v2.Config) ([]Artifact, error) {
 	// DB creds from postgres-operator), so materializing services/keycloak/secret.yaml
 	// only created an orphaned artifact.
 	fixed := []source{
-		{"cert-manager", certManagerPayload(cfg)}, {"loki", cfg.Secrets.Loki},
+		{"cert-manager", certManagerPayload(cfg)}, {"loki", lokiPayload(cfg)},
 		{"mimir", mimirPayload(cfg)},
 		{"headlamp", cfg.Secrets.Headlamp},
 		{"weave-gitops", cfg.Secrets.WeaveGitOps}, {"grafana", cfg.Secrets.Grafana},
@@ -91,7 +91,10 @@ func Plan(cfg *v2.Config) ([]Artifact, error) {
 		// blocks above. Do not add a second owner for the same target artifact;
 		// this also prevents filesystem/managed modes from reintroducing legacy
 		// S3 keys through service_secrets.
-		if service == "harbor" || service == "tempo" {
+		// Loki service_secrets remains a compatibility input when no typed final
+		// values payload can be planned. Once the canonical payload exists, omit
+		// the legacy owner so the artifact remains a single values.yaml entry.
+		if service == "harbor" || service == "tempo" || (service == "loki" && lokiPayload(cfg) != nil) {
 			continue
 		}
 		sources = append(sources, source{service, cfg.Secrets.ServiceSecrets[raw]})
@@ -204,24 +207,92 @@ func etcdBackupPayload(cfg *v2.Config) map[string]interface{} {
 	return payload
 }
 
-func harborPayload(cfg *v2.Config) any {
-	// Harbor has no consumer for a materialized services/harbor/secret.yaml
-	// (opencenter-harbor-secret). Every credential Harbor needs — admin,
-	// registry, database, and (in S3 mode) the object-storage access/secret
-	// keys — is rendered directly into helm-values/override-values.yaml from
-	// cfg.Secrets.Harbor.* and delivered to the chart via the kustomize
-	// secretGenerator (which is SOPS-encrypted at rest). Nothing references
-	// opencenter-harbor-secret via secretKeyRef, so materializing it only
-	// produces an orphaned artifact.
-	//
-	// That orphan is now rejected by validateMaterializedSecretMembership: the
-	// artifact is materialized but Harbor's overlay kustomization.yaml never
-	// lists secret.yaml in resources, which fails `secrets sync` for any config
-	// that populates Harbor credentials. Return nil so Harbor stops emitting the
-	// orphan entirely (the same treatment Keycloak received; see the fixed[]
-	// comment above). This is storage-backend agnostic and consistent with the
-	// OCTR-744 contract that filesystem-mode Harbor carries no S3 credentials.
-	return nil
+func harborPayload(cfg *v2.Config) map[string]interface{} {
+	credentials := cfg.Secrets.Harbor
+	if anyBlank(credentials.AdminPassword, credentials.RegistryPassword, credentials.DatabasePassword) {
+		return nil
+	}
+	values := map[string]interface{}{
+		"harborAdminPassword": credentials.AdminPassword,
+		"registry": map[string]interface{}{
+			"credentials": map[string]interface{}{"password": credentials.RegistryPassword},
+		},
+		"database": map[string]interface{}{
+			"internal": map[string]interface{}{"password": credentials.DatabasePassword},
+		},
+	}
+	if v2.ResolveObjectStorageBackend(cfg, "harbor") == "s3" {
+		accessKey, secretKey := cfg.GetHarborS3Credentials()
+		values["persistence"] = map[string]interface{}{
+			"imageChartStorage": map[string]interface{}{
+				"s3": map[string]interface{}{
+					"accesskey": accessKey,
+					"secretkey": secretKey,
+				},
+			},
+		}
+	}
+	return chartValuesPayload(values)
+}
+
+func lokiPayload(cfg *v2.Config) map[string]interface{} {
+	backend := v2.ResolveObjectStorageBackend(cfg, "loki")
+	// Keep the legacy inline renderer's portable S3 fallback unchanged while
+	// allowing the final-values Secret to represent an explicitly configured
+	// Loki Swift backend.
+	if service, ok := cfg.OpenCenter.Services["loki"].(*services.LokiConfig); ok && strings.EqualFold(strings.TrimSpace(service.StorageType), "swift") {
+		backend = "swift"
+	}
+	switch backend {
+	case "s3":
+		accessKey, secretKey := cfg.GetLokiS3Credentials()
+		if anyBlank(accessKey, secretKey) {
+			return nil
+		}
+		return chartValuesPayload(map[string]interface{}{
+			"loki": map[string]interface{}{
+				"storage": map[string]interface{}{
+					"s3": map[string]interface{}{
+						"accessKeyId":     accessKey,
+						"secretAccessKey": secretKey,
+					},
+				},
+			},
+		})
+	case "swift":
+		password := cfg.GetLokiSwiftPassword()
+		if strings.TrimSpace(password) == "" {
+			return nil
+		}
+		return chartValuesPayload(map[string]interface{}{
+			"loki": map[string]interface{}{
+				"storage": map[string]interface{}{
+					"swift": map[string]interface{}{"password": password},
+				},
+			},
+		})
+	default:
+		return nil
+	}
+}
+
+func chartValuesPayload(values map[string]interface{}) map[string]interface{} {
+	data, err := yaml.Marshal(values)
+	if err != nil {
+		// All values above are strings/maps, so this is unreachable unless the
+		// payload is changed to contain an unsupported value type.
+		return nil
+	}
+	return map[string]interface{}{"values.yaml": string(data)}
+}
+
+func anyBlank(values ...string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // mimirPayload contains only the credentials consumed by Mimir's effective

@@ -43,3 +43,35 @@ func TestGenerateSecretManifestUsesStringDataAndReadableIdentity(t *testing.T) {
 	require.Contains(t, text, "stringData:")
 	require.NotContains(t, text, "\ndata:")
 }
+
+func TestGenerateSecretManifestAddsFinalValuesSecretMetadata(t *testing.T) {
+	manager, _, cleanup := setupTestManager(t)
+	defer cleanup()
+
+	for _, test := range []struct {
+		service   string
+		name      string
+		namespace string
+	}{
+		{service: "harbor", name: "opencenter-harbor-secret", namespace: "harbor"},
+		{service: "loki", name: "opencenter-loki-secret", namespace: "observability"},
+	} {
+		t.Run(test.service, func(t *testing.T) {
+			manifest := manager.generateSecretManifest(test.service, map[string]interface{}{
+				"values.yaml": "loki:\n  storage:\n    s3:\n      accessKeyId: access\n",
+			}, nil)
+
+			metadata, ok := manifest["metadata"].(map[string]interface{})
+			require.True(t, ok)
+			require.Equal(t, test.name, metadata["name"])
+			require.Equal(t, test.namespace, metadata["namespace"])
+			labels, ok := metadata["labels"].(map[string]interface{})
+			require.True(t, ok)
+			require.Equal(t, "Enabled", labels["reconcile.fluxcd.io/watch"])
+			data, ok := manifest["stringData"].(map[string]interface{})
+			require.True(t, ok)
+			require.Len(t, data, 1)
+			require.Contains(t, data, "values.yaml")
+		})
+	}
+}

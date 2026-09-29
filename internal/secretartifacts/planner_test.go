@@ -6,7 +6,27 @@ import (
 	"github.com/opencenter-cloud/opencenter-cli/internal/config/services"
 	v2 "github.com/opencenter-cloud/opencenter-cli/internal/config/v2"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
+
+func chartValues(t *testing.T, artifact Artifact) map[string]any {
+	t.Helper()
+	raw, ok := artifact.Payload["values.yaml"].(string)
+	require.True(t, ok)
+	values := map[string]any{}
+	require.NoError(t, yaml.Unmarshal([]byte(raw), &values))
+	return values
+}
+
+func artifactFor(t *testing.T, artifacts []Artifact, service string) *Artifact {
+	t.Helper()
+	for i := range artifacts {
+		if artifacts[i].TargetService == service {
+			return &artifacts[i]
+		}
+	}
+	return nil
+}
 
 func TestPlanRoutesAndNormalizesArtifacts(t *testing.T) {
 	cfg := &v2.Config{
@@ -181,6 +201,105 @@ func TestPlanOmitsNoneStorageArtifacts(t *testing.T) {
 	require.NoError(t, err)
 	for _, artifact := range artifacts {
 		require.NotContains(t, []string{"loki", "velero"}, artifact.TargetService)
+	}
+}
+
+func TestPlanHarborS3UsesChartShapedFinalValues(t *testing.T) {
+	cfg := &v2.Config{
+		OpenCenter: v2.OpenCenterConfig{Services: map[string]any{
+			"harbor": &services.HarborConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "s3"},
+		}},
+		Secrets: v2.SecretsConfig{Harbor: v2.HarborSecrets{
+			AdminPassword: "admin", RegistryPassword: "registry", DatabasePassword: "database",
+			S3AccessKeyID: "harbor-access", S3SecretAccessKey: "harbor-secret",
+		}},
+	}
+
+	artifacts, err := Plan(cfg)
+	require.NoError(t, err)
+	artifact := artifactFor(t, artifacts, "harbor")
+	require.NotNil(t, artifact)
+	require.Equal(t, "services/harbor/secret.yaml", artifact.Path)
+	values := chartValues(t, *artifact)
+	require.Equal(t, "admin", values["harborAdminPassword"])
+	require.Equal(t, "harbor-access", values["persistence"].(map[string]any)["imageChartStorage"].(map[string]any)["s3"].(map[string]any)["accesskey"])
+	require.Equal(t, "harbor-secret", values["persistence"].(map[string]any)["imageChartStorage"].(map[string]any)["s3"].(map[string]any)["secretkey"])
+	require.Equal(t, "registry", values["registry"].(map[string]any)["credentials"].(map[string]any)["password"])
+	require.Equal(t, "database", values["database"].(map[string]any)["internal"].(map[string]any)["password"])
+}
+
+func TestPlanHarborFilesystemUsesCommonFinalValuesWithoutS3(t *testing.T) {
+	cfg := &v2.Config{
+		OpenCenter: v2.OpenCenterConfig{Services: map[string]any{
+			"harbor": &services.HarborConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "filesystem"},
+		}},
+		Secrets: v2.SecretsConfig{Harbor: v2.HarborSecrets{
+			AdminPassword: "admin", RegistryPassword: "registry", DatabasePassword: "database",
+		}},
+	}
+	artifacts, err := Plan(cfg)
+	require.NoError(t, err)
+	artifact := artifactFor(t, artifacts, "harbor")
+	require.NotNil(t, artifact)
+	values := chartValues(t, *artifact)
+	require.Equal(t, "admin", values["harborAdminPassword"])
+	require.Equal(t, "registry", values["registry"].(map[string]any)["credentials"].(map[string]any)["password"])
+	require.Equal(t, "database", values["database"].(map[string]any)["internal"].(map[string]any)["password"])
+	require.NotContains(t, values, "persistence")
+}
+
+func TestPlanOmitsHarborFinalValuesForIncompleteCommonCredentials(t *testing.T) {
+	cfg := &v2.Config{
+		OpenCenter: v2.OpenCenterConfig{Services: map[string]any{
+			"harbor": &services.HarborConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: "filesystem"},
+		}},
+		Secrets: v2.SecretsConfig{Harbor: v2.HarborSecrets{
+			AdminPassword: "admin", RegistryPassword: "registry",
+		}},
+	}
+	artifacts, err := Plan(cfg)
+	require.NoError(t, err)
+	require.Nil(t, artifactFor(t, artifacts, "harbor"))
+}
+
+func TestPlanLokiFinalValuesFollowActiveStorageBackend(t *testing.T) {
+	tests := []struct {
+		name        string
+		storageType string
+		secrets     v2.LokiSecrets
+		wantPath    string
+		wantKey     string
+		wantValue   string
+	}{
+		{name: "none", storageType: "none", secrets: v2.LokiSecrets{S3AccessKeyID: "access", S3SecretAccessKey: "secret"}},
+		{name: "s3", storageType: "s3", secrets: v2.LokiSecrets{S3AccessKeyID: "access", S3SecretAccessKey: "secret"}, wantPath: "services/loki/secret.yaml", wantKey: "accessKeyId", wantValue: "access"},
+		{name: "swift", storageType: "swift", secrets: v2.LokiSecrets{SwiftPassword: "swift-password"}, wantPath: "services/loki/secret.yaml", wantKey: "password", wantValue: "swift-password"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := &v2.Config{
+				OpenCenter: v2.OpenCenterConfig{Services: map[string]any{
+					"loki": &services.LokiConfig{BaseConfig: services.BaseConfig{Enabled: true}, StorageType: test.storageType},
+				}},
+				Secrets: v2.SecretsConfig{Loki: test.secrets},
+			}
+			artifacts, err := Plan(cfg)
+			require.NoError(t, err)
+			artifact := artifactFor(t, artifacts, "loki")
+			if test.wantPath == "" {
+				require.Nil(t, artifact)
+				return
+			}
+			require.NotNil(t, artifact)
+			require.Equal(t, test.wantPath, artifact.Path)
+			values := chartValues(t, *artifact)
+			storage := values["loki"].(map[string]any)["storage"].(map[string]any)
+			if test.storageType == "s3" {
+				require.Equal(t, test.wantValue, storage["s3"].(map[string]any)[test.wantKey])
+			} else {
+				require.Equal(t, test.wantValue, storage["swift"].(map[string]any)[test.wantKey])
+			}
+		})
 	}
 }
 

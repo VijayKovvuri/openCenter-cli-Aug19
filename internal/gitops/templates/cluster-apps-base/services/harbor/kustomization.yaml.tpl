@@ -14,3 +14,6 @@ resources:
   - "certificate.yaml"
 {{- end }}
   - "httproute.yaml"
+{{- if secretArtifactMaterialized "harbor" }}
+  - "secret.yaml"
+{{- end }}
