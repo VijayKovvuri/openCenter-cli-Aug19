@@ -354,6 +354,9 @@ func TestCheckSecretsSyncedPreflight(t *testing.T) {
 	// mimir create/wire states. (The preflight covering all services is exercised
 	// by the live reproduction; here we keep the fixture minimal.)
 	cfg.Secrets.Loki = v2.LokiSecrets{}
+	// Clear the global AWS fallback as well; Loki resolves typed credentials
+	// from it when its service-specific credentials are empty.
+	cfg.Secrets.Global.AWS = v2.AWSGlobalSecrets{}
 	cfg.Secrets.Tempo = v2.TempoSecrets{}
 	cfg.Secrets.Headlamp = v2.HeadlampSecrets{}
 	cfg.Secrets.Grafana = v2.GrafanaSecrets{}
