@@ -27,6 +27,13 @@ tags: [defaults, configuration, v2, reference]
 | `opencenter.infrastructure.storage.default_storage_class` | Computed by `defaultStorageClass(provider, region)`: a provider/region lookup table's value if one exists; otherwise `csi-cinder-sc-delete` for OpenStack, `vsphere-csi` for VMware, or a generic default for anything else. |
 | `deployment.method` | `kubespray` |
 | `deployment.kubespray.version` | `2.31.0` |
+| `deployment.kubespray.cloud_init_timeout` | `10m` (positive Go duration; applies per host) |
+
+`deployment.kubespray.cloud_init_timeout` controls the cloud-init wait performed
+by the CLI-owned Kubespray lifecycle. It is not passed as an unconditional
+`cloudinit_wait_timeout_seconds` argument to the rendered Terraform module, so
+legacy or custom modules retain their own defaults unless they independently
+support an equivalent input.
 
 Optional CSI storage-plugin defaults, when present, are seeded with `enabled: false` and a pinned version: AWS EBS CSI `1.37.0`, Azure Disk CSI `1.30.0`, Ceph CSI `3.11.0`, GCP Compute CSI `1.13.0`, NetApp Trident `24.06.0`. OpenStack Cinder CSI and VMware vSphere CSI default to `enabled: true` at versions `1.30.0` and `3.3.0` respectively when those providers are selected.
 

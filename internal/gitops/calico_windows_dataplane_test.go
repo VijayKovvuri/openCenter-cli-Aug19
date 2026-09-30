@@ -54,8 +54,22 @@ func TestCalicoWindowsDataplaneIsNestedUnderCalicoNetwork(t *testing.T) {
 			assertWindowsDataplaneNesting(t, mapAt(t, overrideValues, "installation"), tc.want)
 
 			helmRelease := readYAMLMap(t, filepath.Join(overlay, "helmrelease.yaml"))
-			values := mapAt(t, mapAt(t, helmRelease, "spec"), "values")
-			assertWindowsDataplaneNesting(t, mapAt(t, values, "installation"), tc.want)
+			spec := mapAt(t, helmRelease, "spec")
+			valuesFrom := spec["valuesFrom"].([]any)
+			require.Len(t, valuesFrom, 1)
+			valuesRef := valuesFrom[0].(map[string]any)
+			require.Equal(t, "calico-values", valuesRef["name"])
+			require.Equal(t, "values.yaml", valuesRef["valuesKey"])
+
+			kustomization := readYAMLMap(t, filepath.Join(overlay, "kustomization.yaml"))
+			generators := kustomization["configMapGenerator"].([]any)
+			require.Len(t, generators, 1)
+			generator := generators[0].(map[string]any)
+			require.Equal(t, "calico-values", generator["name"])
+
+			// The generated ConfigMap is sourced from the one canonical values file;
+			// HelmRelease must not carry a second inline copy of these values.
+			require.NotContains(t, spec, "values")
 		})
 	}
 }

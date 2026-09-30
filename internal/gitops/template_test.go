@@ -87,6 +87,111 @@ func TestKubeletRotateServerCertsDefaultValue(t *testing.T) {
 	t.Logf("Rendered locals block (default/unset case):\n%s", extractSnippet(mainTfContent, "kubelet_rotate_server_certificates"))
 }
 
+func TestRenderInfrastructureClusterLifecycleContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		provider   string
+		mode       string
+		autoDeploy bool
+		wantDeploy string
+	}{
+		{name: "openstack-legacy-enabled", provider: "openstack", mode: "legacy", autoDeploy: true, wantDeploy: "true"},
+		{name: "openstack-legacy-disabled", provider: "openstack", mode: "legacy", autoDeploy: false, wantDeploy: "false"},
+		{name: "openstack-cli", provider: "openstack", mode: "cli", autoDeploy: true, wantDeploy: "true"},
+		{name: "baremetal-legacy-enabled", provider: "baremetal", mode: "legacy", autoDeploy: true, wantDeploy: "true"},
+		{name: "baremetal-legacy-disabled", provider: "baremetal", mode: "legacy", autoDeploy: false, wantDeploy: "false"},
+		{name: "baremetal-cli", provider: "baremetal", mode: "cli", autoDeploy: true, wantDeploy: "true"},
+		{name: "vmware-legacy-enabled", provider: "vmware", mode: "legacy", autoDeploy: true, wantDeploy: "true"},
+		{name: "vmware-legacy-disabled", provider: "vmware", mode: "legacy", autoDeploy: false, wantDeploy: "false"},
+		{name: "vmware-cli", provider: "vmware", mode: "cli", autoDeploy: true, wantDeploy: "true"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := mustNewGitOpsTestConfig("deploy-cluster-"+tt.name, tt.provider)
+			cfg.OpenCenter.GitOps.Repository.LocalDir = t.TempDir()
+			cfg.Deployment.AutoDeploy = tt.autoDeploy
+
+			require.NoError(t, RenderInfrastructureCluster(cfg))
+
+			mainTFPath := filepath.Join(cfg.GitDir(), "infrastructure", "clusters", cfg.ClusterName(), "main.tf")
+			content, err := os.ReadFile(mainTFPath)
+			require.NoError(t, err)
+
+			mainTF := string(content)
+			assert.Contains(t, mainTF, "deploy_cluster                          = var.opencenter_lifecycle_mode == \"cli\" ? false : "+tt.wantDeploy)
+			assert.Contains(t, mainTF, "deploy_cluster                          = local.deploy_cluster")
+
+			variables, err := os.ReadFile(filepath.Join(cfg.GitDir(), "infrastructure", "clusters", cfg.ClusterName(), "variables.tf"))
+			require.NoError(t, err)
+			assert.Contains(t, string(variables), `variable "opencenter_lifecycle_mode"`)
+			assert.Contains(t, string(variables), `default = "legacy"`)
+			assert.Contains(t, string(variables), `contains(["legacy", "cli"], var.opencenter_lifecycle_mode)`)
+
+			outputs, err := os.ReadFile(filepath.Join(cfg.GitDir(), "infrastructure", "clusters", cfg.ClusterName(), "outputs.tf"))
+			require.NoError(t, err)
+			for _, outputName := range []string{
+				"opencenter_kubespray_inventory_path",
+				"opencenter_kubespray_lifecycle_contract_version",
+				"opencenter_kubespray_api_address",
+				"opencenter_kubespray_api_port",
+			} {
+				assert.Contains(t, string(outputs), `output "`+outputName+`"`)
+			}
+			assert.Contains(t, string(outputs), `var.opencenter_lifecycle_mode == "legacy"`)
+			assert.Contains(t, string(outputs), `try(module.kubespray-cluster.k8s_api_address, null)`)
+			assert.Contains(t, string(outputs), `try(module.kubespray-cluster.k8s_api_port, null)`)
+			assert.NotContains(t, string(outputs), `module.kubespray-cluster.api_address`)
+			assert.NotContains(t, string(outputs), `module.kubespray-cluster.api_port`)
+		})
+	}
+}
+
+func TestRenderInfrastructureClusterHardeningValues(t *testing.T) {
+	for _, provider := range []string{"openstack", "baremetal", "vmware"} {
+		t.Run(provider, func(t *testing.T) {
+			cfg := mustNewGitOpsTestConfig("hardening-"+provider, provider)
+			cfg.OpenCenter.GitOps.Repository.LocalDir = t.TempDir()
+			cfg.OpenCenter.Cluster.Kubernetes.Security.K8sHardening = false
+			cfg.OpenCenter.Infrastructure.Networking.Security.OSHardening = false
+
+			require.NoError(t, RenderInfrastructureCluster(cfg))
+			mainTFPath := filepath.Join(cfg.GitDir(), "infrastructure", "clusters", cfg.ClusterName(), "main.tf")
+			content, err := os.ReadFile(mainTFPath)
+			require.NoError(t, err)
+
+			mainTF := string(content)
+			assert.Contains(t, mainTF, "k8s_hardening_enabled                   = false")
+			assert.Contains(t, mainTF, "os_hardening_enabled                    = false")
+			assert.Contains(t, mainTF, "k8s_hardening_enabled                   = local.k8s_hardening_enabled")
+			assert.Contains(t, mainTF, "os_hardening_enabled                    = local.os_hardening_enabled")
+		})
+	}
+}
+
+func TestRenderInfrastructureClusterCloudInitTimeout(t *testing.T) {
+	for _, provider := range []string{"openstack", "baremetal", "vmware"} {
+		t.Run(provider, func(t *testing.T) {
+			cfg := mustNewGitOpsTestConfig("cloud-init-timeout-"+provider, provider)
+			cfg.OpenCenter.GitOps.Repository.LocalDir = t.TempDir()
+			cfg.Deployment.Kubespray.CloudInitTimeout = "1h15m"
+
+			require.NoError(t, RenderInfrastructureCluster(cfg))
+			mainTFPath := filepath.Join(cfg.GitDir(), "infrastructure", "clusters", cfg.ClusterName(), "main.tf")
+			content, err := os.ReadFile(mainTFPath)
+			require.NoError(t, err)
+
+			mainTF := string(content)
+			// cloud_init_timeout is consumed by the CLI-owned Kubespray lifecycle.
+			// Do not pass it unconditionally to legacy/custom Terraform modules:
+			// older module contracts do not declare this input and retain their own
+			// cloud-init wait defaults.
+			assert.NotContains(t, mainTF, "kubesprayCloudInitTimeoutSeconds")
+			assert.NotContains(t, mainTF, "cloudinit_wait_timeout_seconds")
+		})
+	}
+}
+
 // extractModuleSnippet extracts lines from the kubespray-cluster module block
 func extractModuleSnippet(content, searchTerm string) string {
 	lines := strings.Split(content, "\n")

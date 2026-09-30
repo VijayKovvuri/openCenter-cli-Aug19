@@ -285,7 +285,8 @@ func NewV2Default(name, provider string) (*Config, error) {
 			AutoDeploy: true,
 			Method:     "kubespray",
 			Kubespray: &KubesprayConfig{
-				Version: "2.31.0",
+				Version:          "2.31.0",
+				CloudInitTimeout: defaultKubesprayCloudInitTimeout,
 				Modules: map[string]ModuleConfig{
 					"kubespray": {
 						Enabled: true,

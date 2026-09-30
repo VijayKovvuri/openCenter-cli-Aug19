@@ -22,14 +22,16 @@ locals {
   kubespray_version                       = "{{ if hasPrefix "v" (.Deployment.Kubespray.Version | default "v2.31.0") }}{{ .Deployment.Kubespray.Version | default "v2.31.0" }}{{ else }}v{{ .Deployment.Kubespray.Version }}{{ end }}"
   kubernetes_version                      = "{{ .OpenCenter.Cluster.Kubernetes.Version | default "1.33.7" }}"
   network_plugin                          = "{{ if and .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.Enabled }}calico{{ else if and .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Cilium .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Cilium.Enabled }}cilium{{ else if and .OpenCenter.Cluster.Kubernetes.NetworkPlugin.KubeOVN .OpenCenter.Cluster.Kubernetes.NetworkPlugin.KubeOVN.Enabled }}kube-ovn{{ else }}calico{{ end }}"
-  deploy_cluster                          = {{ .Deployment.AutoDeploy | default true }}
+  # CLI mode delegates Kubernetes lifecycle operations to the CLI. Keep the
+  # explicit deployment setting in legacy mode for existing module users.
+  deploy_cluster                          = var.opencenter_lifecycle_mode == "cli" ? false : {{ .Deployment.AutoDeploy }}
   #kube-vip settings
   kube_vip_enabled                        = {{ .OpenCenter.Cluster.Kubernetes.KubeVIPEnabled | default true }}
   #Hardening
-  k8s_hardening_enabled                   = {{ .OpenCenter.Cluster.Kubernetes.Security.K8sHardening | default true }}
+  k8s_hardening_enabled                   = {{ if .OpenCenter.Cluster.Kubernetes.Security.K8sHardening }}true{{ else }}false{{ end }}
   kube_pod_security_exemptions_namespaces = {{ if .OpenCenter.Cluster.Kubernetes.Security.PodSecurityExemptions }}[{{ range $i, $ns := .OpenCenter.Cluster.Kubernetes.Security.PodSecurityExemptions }}{{if $i}}, {{end}}"{{ $ns }}"{{ end }}]{{ else }}["trivy-temp"]{{ end }}
   kubelet_rotate_server_certificates      = {{ .OpenCenter.Cluster.Kubernetes.KubeletRotateServerCerts | default false }}
-  os_hardening_enabled                    = {{ .OpenCenter.Infrastructure.Networking.Security.OSHardening | default true }}
+  os_hardening_enabled                    = {{ if .OpenCenter.Infrastructure.Networking.Security.OSHardening }}true{{ else }}false{{ end }}
 
   {{- if .OpenCenter.Cluster.Kubernetes.OIDC.Enabled }}
   #OIDC Settings
@@ -114,6 +116,8 @@ locals {
 
 module "kubespray-cluster" {
   source = "{{ .Deployment.Kubespray.KubesprayCluster.Source | default "github.com/opencenter-cloud/openCenter-gitops-base.git//iac/provider/kubespray?ref=main" }}"
+  # CLI mode makes OpenTofu infrastructure-only; legacy mode preserves
+  # Deployment.AutoDeploy through local.deploy_cluster.
   address_bastion                         = local.address_bastion
   cluster_name                            = local.cluster_name
   cni_iface                               = local.cni_iface
@@ -154,7 +158,7 @@ module "kubespray-cluster" {
   {{- else }}
   {{- end }}
 }
-{{- if and .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.Enabled }}
+{{- if and .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.Enabled (eq (.OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.InstallMethod | default "helm") "kubespray") }}
 module "calico" {
   source = "{{ .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.Modules.Calico.Source | default "github.com/opencenter-cloud/openCenter-gitops-base.git//iac/cni/calico?ref=main" }}"
   calico_interface_autodetect      = local.calico_interface_autodetect

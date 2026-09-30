@@ -551,6 +551,9 @@
         "kubespray": {
           "additionalProperties": false,
           "properties": {
+            "cloud_init_timeout": {
+              "type": "string"
+            },
             "kubespray_cluster": {
               "additionalProperties": false,
               "properties": {

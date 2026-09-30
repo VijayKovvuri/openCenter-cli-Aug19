@@ -1,11 +1,13 @@
 package cluster
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	openstackprovider "github.com/opencenter-cloud/opencenter-cli/internal/cloud/openstack"
@@ -17,6 +19,8 @@ import (
 type openstackBootstrapProvider struct {
 	runner lifecycleCommandRunner
 }
+
+const calicoStateResource = "module.calico.local_file.calico_values"
 
 func newOpenStackBootstrapProvider(runner lifecycleCommandRunner) lifecycleBootstrapProvider {
 	return &openstackBootstrapProvider{runner: runner}
@@ -38,6 +42,7 @@ func (p *openstackBootstrapProvider) BuildSteps(cfg *v2.Config, clusterPaths *pa
 
 	provider := strings.ToLower(strings.TrimSpace(cfg.Provider()))
 	planEnv := providerPlanEnv(provider, opts.KubeconfigPath)
+	var kubeLifecycle *kubesprayLifecycle
 
 	steps := []bootstrapStep{
 		p.buildPreflightStep(cfg, provider, clusterDir),
@@ -60,6 +65,9 @@ func (p *openstackBootstrapProvider) BuildSteps(cfg *v2.Config, clusterPaths *pa
 				if err != nil {
 					return err
 				}
+				if kubeLifecycle != nil {
+					kubeLifecycle.openTofuEnv = cloneStringMap(env)
+				}
 				_, runErr := p.runner.Run(ctx, clusterDir, env, openTofuPath, "init")
 				return runErr
 			},
@@ -71,7 +79,7 @@ func (p *openstackBootstrapProvider) BuildSteps(cfg *v2.Config, clusterPaths *pa
 				ID:          "opentofu-apply",
 				Action:      "Apply OpenTofu infrastructure",
 				WorkingDir:  clusterDir,
-				Commands:    []BootstrapPlanCommand{commandPlan(openTofuPath, "apply", "-auto-approve")},
+				Commands:    []BootstrapPlanCommand{commandPlan(openTofuPath, "apply", "-auto-approve", "-var=opencenter_lifecycle_mode=cli")},
 				Environment: planEnv,
 				Reads:       []string{clusterDir},
 				Writes:      []string{"infrastructure resources", filepath.Join(clusterDir, "terraform.tfstate")},
@@ -82,32 +90,120 @@ func (p *openstackBootstrapProvider) BuildSteps(cfg *v2.Config, clusterPaths *pa
 				if err != nil {
 					return err
 				}
-				_, runErr := p.runner.Run(ctx, clusterDir, env, openTofuPath, "apply", "-auto-approve")
-				return runErr
+				if kubeLifecycle != nil {
+					kubeLifecycle.openTofuEnv = cloneStringMap(env)
+				}
+				return p.runOpenTofuApply(ctx, cfg, clusterDir, env, openTofuPath)
 			},
 		},
 	}
 
-	// DISABLED: kubespray steps (kubespray-venv-create, kubespray-pip-install,
-	// kubespray-ansible-playbook) are intentionally skipped here.
-	//
-	// The OpenTofu module for this provider already embeds a
-	// null_resource.run_kubespray with a local-exec provisioner that runs the
-	// full Ansible/Kubespray playbook as part of opentofu-apply (step 3).
-	// Appending these steps caused Ansible to run a second time against a
-	// cluster that was already provisioned, wasting ~1h of deploy time.
-	//
-	// Long-term fix: remove the null_resource.run_kubespray local-exec from
-	// the OpenTofu templates so that OpenTofu only provisions infrastructure
-	// and these steps own the Ansible run exclusively.
-	//
-	// if cfg.Deployment.Method == "kubespray" {
-	// 	kubespraySteps, err := p.buildKubespraySteps(cfg, clusterPaths, clusterDir, planEnv, opts)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("building kubespray steps: %w", err)
-	// 	}
-	// 	steps = append(steps, kubespraySteps...)
-	// }
+	if strings.EqualFold(strings.TrimSpace(cfg.Deployment.Method), "kubespray") {
+		kubeLifecycle = newKubesprayLifecycle(p.runner, openTofuPath, clusterDir, clusterPaths, opts.KubeconfigPath, nil)
+		kubeLifecycle.osHardening = cfg.OpenCenter.Infrastructure.Networking.Security.OSHardening
+		cloudInitTimeout, err := kubesprayCloudInitTimeout(cfg)
+		if err != nil {
+			return nil, err
+		}
+		prepareCommands := []BootstrapPlanCommand{
+			kubeLifecycle.outputPlan(),
+			commandPlan("git", "clone", "--branch", kubesprayVersion(cfg), "--depth", "1", kubesprayRepositoryURL, kubeLifecycle.kubesprayPath),
+			commandPlan("python3", "-m", "venv", kubeLifecycle.venvPath),
+			commandPlan(filepath.Join(kubeLifecycle.venvPath, "bin", "pip"), "install", "-r", filepath.Join(kubeLifecycle.kubesprayPath, "requirements.txt")),
+		}
+		prepareWrites := []string{kubeLifecycle.stateDir, kubeLifecycle.inventoryPath, kubeLifecycle.outputsPath}
+		if kubeLifecycle.osHardening {
+			prepareCommands = append(prepareCommands,
+				commandPlan("git", "clone", ansibleHardeningRepositoryURL, filepath.Join(kubeLifecycle.inventoryPath, "roles", "ansible-hardening")),
+				commandPlan("git", "-C", filepath.Join(kubeLifecycle.inventoryPath, "roles", "ansible-hardening"), "checkout", "--detach", ansibleHardeningVersion),
+			)
+			prepareWrites = append(prepareWrites,
+				filepath.Join(kubeLifecycle.inventoryPath, "roles", "ansible-hardening"),
+				filepath.Join(kubeLifecycle.inventoryPath, "os_hardening_playbook.yml"),
+			)
+		}
+		steps = append(steps,
+			bootstrapStep{
+				ID:          "kubespray-prepare",
+				Description: "Prepare Kubespray inventory and execution environment",
+				Plan: BootstrapPlanStep{
+					ID:          "kubespray-prepare",
+					Action:      "Prepare Kubespray inventory and execution environment",
+					WorkingDir:  kubeLifecycle.stateDir,
+					Commands:    prepareCommands,
+					Environment: planEnv,
+					Reads:       []string{clusterDir},
+					Writes:      prepareWrites,
+					Notes:       []string{"OpenTofu outputs and all Kubespray execution files are kept in the state zone, never in the GitOps worktree."},
+				},
+				Run: func(ctx context.Context) error { return kubeLifecycle.prepare(ctx, cfg) },
+			},
+			bootstrapStep{
+				ID:          "kubespray-wait-cloudinit",
+				Description: "Wait for cloud-init on every Kubespray host",
+				Plan: BootstrapPlanStep{
+					ID:          "kubespray-wait-cloudinit",
+					Action:      "Wait for cloud-init on every Kubespray host",
+					WorkingDir:  kubeLifecycle.stateDir,
+					Commands:    []BootstrapPlanCommand{commandPlan(filepath.Join(kubeLifecycle.venvPath, "bin", "ansible"), "k8s_cluster", "-i", filepath.Join(kubeLifecycle.inventoryPath, "inventory.yaml"), "-b", "-m", "shell", "-a", `cloud-init status --wait; rc=$?; case "$rc" in 0|2) exit 0;; *) exit "$rc";; esac`)},
+					Environment: envPlanFromMap(kubeLifecycle.environment(), nil),
+					Reads:       []string{kubeLifecycle.inventoryPath},
+					Notes:       []string{fmt.Sprintf("Context timeout: %s. Failed waits collect per-host ping, hostname, cloud-init, blame, and journal diagnostics.", cloudInitTimeout)},
+				},
+				Run: func(ctx context.Context) error { return kubeLifecycle.waitCloudInit(ctx, cloudInitTimeout) },
+			},
+		)
+		if cfg.OpenCenter.Infrastructure.Networking.Security.OSHardening {
+			hardeningPlanEnv := kubeLifecycle.environment()
+			hardeningPlanEnv["ANSIBLE_ROLES_PATH"] = filepath.Join(kubeLifecycle.inventoryPath, "roles")
+			steps = append(steps, bootstrapStep{
+				ID:          "kubespray-os-hardening",
+				Description: "Apply CLI-owned Kubespray OS hardening",
+				Plan: BootstrapPlanStep{
+					ID:          "kubespray-os-hardening",
+					Action:      "Apply CLI-owned Kubespray OS hardening",
+					WorkingDir:  kubeLifecycle.stateDir,
+					Commands:    []BootstrapPlanCommand{commandPlan(filepath.Join(kubeLifecycle.venvPath, "bin", "ansible-playbook"), "-i", filepath.Join(kubeLifecycle.inventoryPath, "inventory.yaml"), filepath.Join(kubeLifecycle.inventoryPath, "os_hardening_playbook.yml"), "-f", "10", "-b", "--become-user=root")},
+					Environment: envPlanFromMap(hardeningPlanEnv, nil),
+					Reads:       []string{kubeLifecycle.inventoryPath},
+				},
+				Run: func(ctx context.Context) error { return kubeLifecycle.harden(ctx) },
+			})
+		}
+		deployCommands := []BootstrapPlanCommand{}
+		deployPlanEnv := kubeLifecycle.environment()
+		deployPlanEnv["ANSIBLE_ROLES_PATH"] = filepath.Join(kubeLifecycle.kubesprayPath, "roles")
+		deployCommands = append(deployCommands, commandPlan(filepath.Join(kubeLifecycle.venvPath, "bin", "ansible-playbook"), "-i", filepath.Join(kubeLifecycle.inventoryPath, "inventory.yaml"), filepath.Join(kubeLifecycle.kubesprayPath, "cluster.yml"), "-f", "10", "-b", "--become-user=root"))
+		steps = append(steps,
+			bootstrapStep{
+				ID:          "kubespray-deploy",
+				Description: "Deploy Kubernetes with Kubespray",
+				Plan: BootstrapPlanStep{
+					ID:          "kubespray-deploy",
+					Action:      "Deploy Kubernetes with Kubespray",
+					WorkingDir:  kubeLifecycle.stateDir,
+					Commands:    deployCommands,
+					Environment: envPlanFromMap(deployPlanEnv, nil),
+					Reads:       []string{kubeLifecycle.inventoryPath, kubeLifecycle.kubesprayPath},
+				},
+				Run: func(ctx context.Context) error { return kubeLifecycle.deploy(ctx, cfg) },
+			},
+			bootstrapStep{
+				ID:          "kubespray-export-kubeconfig",
+				Description: "Export the Kubernetes admin kubeconfig",
+				Plan: BootstrapPlanStep{
+					ID:          "kubespray-export-kubeconfig",
+					Action:      "Export the Kubernetes admin kubeconfig",
+					WorkingDir:  kubeLifecycle.stateDir,
+					Commands:    []BootstrapPlanCommand{commandPlan(filepath.Join(kubeLifecycle.venvPath, "bin", "ansible"), "kube_control_plane[0]", "-i", filepath.Join(kubeLifecycle.inventoryPath, "inventory.yaml"), "-b", "-m", "fetch", "-a", "src=/etc/kubernetes/admin.conf dest="+kubeLifecycle.kubeconfigTemp+" flat=true")},
+					Environment: envPlanFromMap(kubeLifecycle.environment(), nil),
+					Reads:       []string{kubeLifecycle.inventoryPath},
+					Writes:      []string{opts.KubeconfigPath},
+				},
+				Run: func(ctx context.Context) error { return kubeLifecycle.exportKubeconfig(ctx) },
+			},
+		)
+	}
 
 	apiEndpointIP := resolveAPIEndpointIP(cfg)
 	steps = append(steps, bootstrapStep{
@@ -122,6 +218,12 @@ func (p *openstackBootstrapProvider) BuildSteps(cfg *v2.Config, clusterPaths *pa
 			Notes:      []string{"Plan only; kubeconfig candidates were not checked."},
 		},
 		Run: func(ctx context.Context) error {
+			if kubeLifecycle != nil {
+				if err := kubeLifecycle.loadOutputs(); err != nil {
+					return fmt.Errorf("validate Kubespray outputs before kubeconfig normalization: %w", err)
+				}
+				return kubeLifecycle.verifyExportedKubeconfig()
+			}
 			return normalizeOpenStackKubeconfig(clusterDir, opts.KubeconfigPath, apiEndpointIP)
 		},
 	})
@@ -154,6 +256,145 @@ func (p *openstackBootstrapProvider) BuildSteps(cfg *v2.Config, clusterPaths *pa
 	// No automatic git push — the user commits and pushes manually after deploy.
 
 	return steps, nil
+}
+
+func (p *openstackBootstrapProvider) runOpenTofuApply(ctx context.Context, cfg *v2.Config, clusterDir string, env map[string]string, openTofuPath string) error {
+	if !isHelmManagedCalico(cfg) {
+		_, err := p.runner.Run(ctx, clusterDir, env, openTofuPath, "apply", "-auto-approve", "-var=opencenter_lifecycle_mode=cli")
+		return err
+	}
+
+	state, err := p.runner.Run(ctx, clusterDir, env, openTofuPath, "state", "list")
+	if err != nil {
+		if isOpenTofuNoStateFileResponse(state, err) {
+			state = nil
+		} else {
+			return fmt.Errorf("Calico OpenTofu state safety check failed in %s: tofu state list: %w", clusterDir, err)
+		}
+	}
+	if strings.Contains(string(state), calicoStateResource) {
+		return fmt.Errorf("refusing to apply: OpenTofu state in %s contains %s; from the current infrastructure directory, run the non-destructive migration command: tofu state rm '%s'", clusterDir, calicoStateResource, calicoStateResource)
+	}
+
+	snapshot, err := snapshotCalicoGitOpsFiles(cfg)
+	if err != nil {
+		return fmt.Errorf("snapshot Calico GitOps files before OpenTofu apply: %w", err)
+	}
+
+	_, applyErr := p.runner.Run(ctx, clusterDir, env, openTofuPath, "apply", "-auto-approve", "-var=opencenter_lifecycle_mode=cli")
+	verifyErr := verifyCalicoGitOpsFiles(cfg, snapshot)
+	if verifyErr != nil {
+		if applyErr != nil {
+			return fmt.Errorf("OpenTofu apply failed: %w; Calico GitOps file safety check failed: %v", applyErr, verifyErr)
+		}
+		return verifyErr
+	}
+	return applyErr
+}
+
+func isOpenTofuNoStateFileResponse(output []byte, err error) bool {
+	const noStateFileMessage = "no state file was found"
+
+	if strings.Contains(strings.ToLower(string(output)), noStateFileMessage) {
+		return true
+	}
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), noStateFileMessage)
+}
+
+func isHelmManagedCalico(cfg *v2.Config) bool {
+	if cfg == nil || cfg.OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico == nil {
+		return false
+	}
+	calico := cfg.OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico
+	if !calico.Enabled {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(calico.InstallMethod)) {
+	case "", openStackNetworkPluginMethodHelm, openStackNetworkPluginMethodKustomizeHelm:
+		return true
+	default:
+		return false
+	}
+}
+
+func calicoGitOpsFilesRoot(cfg *v2.Config) (string, error) {
+	if cfg == nil {
+		return "", fmt.Errorf("configuration is nil")
+	}
+	gitDir := strings.TrimSpace(cfg.GitDir())
+	if gitDir == "" {
+		return "", fmt.Errorf("gitops.git_dir must be configured for Calico GitOps safety checks")
+	}
+	clusterName := strings.TrimSpace(cfg.ClusterName())
+	if clusterName == "" {
+		return "", fmt.Errorf("cluster name must be set for Calico GitOps safety checks")
+	}
+	return filepath.Join(gitDir, "applications", "overlays", clusterName, "services", "calico"), nil
+}
+
+type calicoGitOpsSnapshot map[string][]byte
+
+func snapshotCalicoGitOpsFiles(cfg *v2.Config) (calicoGitOpsSnapshot, error) {
+	root, err := calicoGitOpsFilesRoot(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshot := make(calicoGitOpsSnapshot)
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if os.IsNotExist(walkErr) && path == root {
+				return nil
+			}
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return fmt.Errorf("resolve relative path for %s: %w", path, err)
+		}
+		snapshot[relative] = append([]byte(nil), data...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+func verifyCalicoGitOpsFiles(cfg *v2.Config, before calicoGitOpsSnapshot) error {
+	after, err := snapshotCalicoGitOpsFiles(cfg)
+	if err != nil {
+		return fmt.Errorf("snapshot Calico GitOps files after OpenTofu apply: %w", err)
+	}
+
+	changed := make([]string, 0)
+	for path, beforeData := range before {
+		afterData, ok := after[path]
+		if !ok {
+			changed = append(changed, "deleted "+path)
+			continue
+		}
+		if !bytes.Equal(beforeData, afterData) {
+			changed = append(changed, "changed "+path)
+		}
+	}
+	for path := range after {
+		if _, ok := before[path]; !ok {
+			changed = append(changed, "added "+path)
+		}
+	}
+	if len(changed) == 0 {
+		return nil
+	}
+	sort.Strings(changed)
+	return fmt.Errorf("Calico GitOps files changed during OpenTofu apply; no files were restored: %s", strings.Join(changed, ", "))
 }
 
 func extractOpenStackBootstrapCredentials(cfg *v2.Config) (*credentials.OpenStackCredentials, error) {
@@ -271,13 +512,36 @@ func normalizeOpenStackKubeconfig(clusterDir, targetPath, apiEndpointIP string) 
 	}
 
 	data = replaceLocalhostInKubeconfig(data, apiEndpointIP)
+	if err := validateKubeconfigYAML(data); err != nil {
+		return fmt.Errorf("validate normalized kubeconfig: %w", err)
+	}
 
-	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
 		return fmt.Errorf("create kubeconfig directory: %w", err)
 	}
 
-	if err := os.WriteFile(targetPath, data, 0o600); err != nil {
-		return fmt.Errorf("write kubeconfig %s: %w", targetPath, err)
+	temporary, err := os.CreateTemp(filepath.Dir(targetPath), ".kubeconfig.normalized-*")
+	if err != nil {
+		return fmt.Errorf("create temporary kubeconfig: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return fmt.Errorf("set temporary kubeconfig permissions: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return fmt.Errorf("write temporary kubeconfig: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close temporary kubeconfig: %w", err)
+	}
+	if err := os.Rename(temporaryPath, targetPath); err != nil {
+		return fmt.Errorf("atomically install kubeconfig %s: %w", targetPath, err)
+	}
+	if err := os.Chmod(targetPath, 0o600); err != nil {
+		return fmt.Errorf("set kubeconfig permissions: %w", err)
 	}
 
 	return nil

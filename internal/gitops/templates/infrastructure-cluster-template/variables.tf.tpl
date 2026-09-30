@@ -1,3 +1,13 @@
+variable "opencenter_lifecycle_mode" {
+  type    = string
+  default = "legacy"
+
+  validation {
+    condition     = contains(["legacy", "cli"], var.opencenter_lifecycle_mode)
+    error_message = "opencenter_lifecycle_mode must be either legacy or cli."
+  }
+}
+
 variable "os_application_credential_id" {
   type    = string
   default = ""

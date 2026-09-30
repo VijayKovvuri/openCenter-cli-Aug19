@@ -13,6 +13,12 @@
 
 package v2
 
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
 // DeploymentConfig represents deployment method configuration.
 // Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
 type DeploymentConfig struct {
@@ -27,8 +33,40 @@ type DeploymentConfig struct {
 // Requirements: 5.2
 type KubesprayConfig struct {
 	Version          string                  `yaml:"version" json:"version" validate:"required,semver"`
+	CloudInitTimeout string                  `yaml:"cloud_init_timeout,omitempty" json:"cloud_init_timeout,omitempty" jsonschema:"default=10m,description=Maximum time to wait for cloud-init on each Kubespray host"`
 	Modules          map[string]ModuleConfig `yaml:"modules,omitempty" json:"modules,omitempty"`
 	KubesprayCluster ModuleConfig            `yaml:"kubespray_cluster,omitempty" json:"kubespray_cluster,omitempty"`
+}
+
+const defaultKubesprayCloudInitTimeout = "10m"
+
+// EffectiveCloudInitTimeout returns the configured Kubespray cloud-init wait
+// deadline, retaining the safe default for configurations created before the
+// field was added.
+func (k *KubesprayConfig) EffectiveCloudInitTimeout() time.Duration {
+	if k == nil || strings.TrimSpace(k.CloudInitTimeout) == "" {
+		return 10 * time.Minute
+	}
+	duration, err := time.ParseDuration(strings.TrimSpace(k.CloudInitTimeout))
+	if err != nil || duration <= 0 {
+		return 0
+	}
+	return duration
+}
+
+func validateKubesprayCloudInitTimeout(k *KubesprayConfig) error {
+	if k == nil {
+		return nil
+	}
+	value := strings.TrimSpace(k.CloudInitTimeout)
+	if value == "" {
+		return nil
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration <= 0 {
+		return fmt.Errorf("deployment.kubespray.cloud_init_timeout must be a positive duration (for example, 10m)")
+	}
+	return nil
 }
 
 // ModuleConfig represents a deployment module configuration.

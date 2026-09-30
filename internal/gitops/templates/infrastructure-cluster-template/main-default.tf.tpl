@@ -119,18 +119,20 @@ locals {
   # OpenStack deploy installs the selected CNI after kubeconfig normalization.
   # "kubespray" is retained only for non-OpenStack migration compatibility.
   network_plugin                          = "{{- if and .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.Enabled }}{{- if eq (.OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.InstallMethod | default "helm") "kubespray" }}calico{{- else }}none{{- end }}{{- else if and .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Cilium .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Cilium.Enabled }}{{- if eq (.OpenCenter.Cluster.Kubernetes.NetworkPlugin.Cilium.InstallMethod | default "helm") "kubespray" }}cilium{{- else }}none{{- end }}{{- else if and .OpenCenter.Cluster.Kubernetes.NetworkPlugin.KubeOVN .OpenCenter.Cluster.Kubernetes.NetworkPlugin.KubeOVN.Enabled }}{{- if eq (.OpenCenter.Cluster.Kubernetes.NetworkPlugin.KubeOVN.InstallMethod | default "helm") "kubespray" }}kube-ovn{{- else }}none{{- end }}{{- else }}none{{- end }}"
-  deploy_cluster                          = {{ .Deployment.AutoDeploy | default true }}
+  # CLI mode delegates Kubernetes lifecycle operations to the CLI. Keep the
+  # explicit deployment setting in legacy mode for existing module users.
+  deploy_cluster                          = var.opencenter_lifecycle_mode == "cli" ? false : {{ .Deployment.AutoDeploy }}
   #kub-vip settings
   kube_vip_enabled                        = {{ .OpenCenter.Cluster.Kubernetes.KubeVIPEnabled | default true }}
   #Hardening
-  k8s_hardening_enabled                   = true
+  k8s_hardening_enabled                   = {{ if .OpenCenter.Cluster.Kubernetes.Security.K8sHardening }}true{{ else }}false{{ end }}
   kube_pod_security_exemptions_namespaces = ["trivy-temp"]
   # Must remain false for the initial bootstrap. No CNI is installed by Kubespray
   # (CNI is deployed via GitOps after kubeconfig normalization). Kubelet certificate
   # rotation requires node Ready status, which depends on a functioning CNI.
   # Enabling this before the CNI is running causes bootstrap failure.
   kubelet_rotate_server_certificates      = false
-  os_hardening_enabled                    = true
+  os_hardening_enabled                    = {{ if .OpenCenter.Infrastructure.Networking.Security.OSHardening }}true{{ else }}false{{ end }}
 
   {{- if .OpenCenter.Cluster.Kubernetes.OIDC.Enabled }}
   #OIDC Settings
@@ -333,6 +335,8 @@ module "openstack-nova" {
 
 module "kubespray-cluster" {
   source = "{{ (index .Deployment.Kubespray.Modules "kubespray").Source | default "github.com/opencenter-cloud/openCenter-gitops-base.git//iac/provider/kubespray?ref=main" }}"
+  # CLI mode makes OpenTofu infrastructure-only; legacy mode preserves
+  # Deployment.AutoDeploy through local.deploy_cluster.
 {{- if eq (.OpenCenter.Infrastructure.Provider | default "openstack") "baremetal" }}
   address_bastion                         = local.address_bastion
 {{- else }}

@@ -180,6 +180,19 @@ func (r *readinessBuilder) validateNetworkPlugin(cfg *Config) {
 		return
 	}
 
+	if plugins.Calico != nil && plugins.Calico.Enabled {
+		if _, err := ResolveCalicoInterfaceAutodetect(plugins.Calico); err != nil {
+			path := "opencenter.cluster.kubernetes.network_plugin.calico.calico_interface_autodetect"
+			switch strings.ToLower(strings.TrimSpace(plugins.Calico.CalicoInterfaceAutodetect)) {
+			case CalicoInterfaceAutodetectInterface:
+				path = "opencenter.cluster.kubernetes.network_plugin.calico.cni_iface"
+			case CalicoInterfaceAutodetectCIDR:
+				path = "opencenter.cluster.kubernetes.network_plugin.calico.autodetect_cidr"
+			}
+			r.addError(CategorySchema, path, err.Error(), "Set a supported Calico autodetection mode and its required value.")
+		}
+	}
+
 	provider := strings.ToLower(strings.TrimSpace(cfg.OpenCenter.Infrastructure.Provider))
 
 	plugin := enabled[0]

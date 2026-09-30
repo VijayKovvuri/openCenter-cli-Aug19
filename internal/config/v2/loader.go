@@ -135,6 +135,9 @@ func (cl *ConfigLoader) normalize(cfg *Config) error {
 	if cfg.OpenCenter.Infrastructure.SSH.Username == "" && cfg.OpenCenter.Infrastructure.SSH.User != "" {
 		cfg.OpenCenter.Infrastructure.SSH.Username = cfg.OpenCenter.Infrastructure.SSH.User
 	}
+	if cfg.Deployment.Kubespray != nil && strings.TrimSpace(cfg.Deployment.Kubespray.CloudInitTimeout) == "" {
+		cfg.Deployment.Kubespray.CloudInitTimeout = defaultKubesprayCloudInitTimeout
+	}
 
 	// Handle empty string vs null for optional fields
 	// Ensure consistent representation

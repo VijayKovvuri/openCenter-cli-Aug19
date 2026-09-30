@@ -3,6 +3,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: tigera-operator
+configMapGenerator:
+  - name: calico-values
+    files:
+      - values.yaml=helm-values/override_values.yaml
+    options:
+      disableNameSuffixHash: true
 resources:
   - namespace.yaml
   - helmrepository.yaml

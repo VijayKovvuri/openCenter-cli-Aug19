@@ -30,7 +30,7 @@ const (
 	bootstrapStatusSkipped = "skipped"
 
 	// Bootstrap state version
-	bootstrapStateVersion = 1
+	bootstrapStateVersion = 2
 
 	// Default timeout for cluster readiness
 	defaultReadyTimeout = 30 * time.Minute
@@ -200,8 +200,9 @@ type bootstrapStep struct {
 
 // bootstrapState tracks the state of bootstrap steps
 type bootstrapState struct {
-	Version int                           `json:"version"`
-	Steps   map[string]bootstrapStepState `json:"steps"`
+	Version                   int                           `json:"version"`
+	Steps                     map[string]bootstrapStepState `json:"steps"`
+	LegacyApplyHandoffPending bool                          `json:"legacy_apply_handoff_pending,omitempty"`
 }
 
 // bootstrapStepState represents the state of a single step
@@ -418,6 +419,12 @@ func (s *BootstrapService) provisionInfrastructure(ctx context.Context, cfg *v2.
 	if err != nil {
 		return err
 	}
+	if migrated := migrateBootstrapState(state, steps, cfg); migrated {
+		if err := s.saveBootstrapState(statePath, state); err != nil {
+			return fmt.Errorf("saving migrated bootstrap state: %w", err)
+		}
+		logBootstrapMessage(ctx, "migrated bootstrap state to version %d", bootstrapStateVersion)
+	}
 
 	// Filter steps based on options
 	selectedSteps, ignoreState, err := s.filterSteps(steps, opts)
@@ -524,8 +531,10 @@ func (s *BootstrapService) executeBootstrapSteps(ctx context.Context, selectedSt
 
 	// Execute steps
 	for i, step := range selectedSteps {
+		legacyApplyHandoff := step.ID == "opentofu-apply" && state != nil && state.LegacyApplyHandoffPending
+
 		// Skip if already completed (unless ignoring state or step is marked NeverSkip)
-		if !step.NeverSkip && !ignoreState && stateEnabled && s.isStepSuccess(state, step.ID) {
+		if !legacyApplyHandoff && !step.NeverSkip && !ignoreState && stateEnabled && s.isStepSuccess(state, step.ID) {
 			s.progress("  [%d/%d] ⏭ %s (%s) (already completed)", i+1, totalSteps, step.Description, step.ID)
 			logging.Debugf("bootstrap: step %s skipped (already completed in saved state)", step.ID)
 			logBootstrapMessage(ctx, "step skipped from saved state: %s", step.ID)
@@ -533,7 +542,7 @@ func (s *BootstrapService) executeBootstrapSteps(ctx context.Context, selectedSt
 		}
 
 		// Mark step as running
-		if stateEnabled {
+		if stateEnabled && !legacyApplyHandoff {
 			s.setStepStatus(state, step.ID, bootstrapStatusRunning, "")
 			if err := s.saveBootstrapState(statePath, state); err != nil {
 				return err
@@ -552,8 +561,14 @@ func (s *BootstrapService) executeBootstrapSteps(ctx context.Context, selectedSt
 		if err := step.Run(ctx); err != nil {
 			stepDuration := time.Since(stepStart).Round(time.Millisecond)
 			// Mark step as failed
-			if stateEnabled {
+			if stateEnabled && !legacyApplyHandoff {
 				s.setStepStatus(state, step.ID, bootstrapStatusFailed, err.Error())
+				if saveErr := s.saveBootstrapState(statePath, state); saveErr != nil {
+					return saveErr
+				}
+			} else if stateEnabled {
+				// Keep the historical successful apply and the handoff pending so
+				// a later invocation can retry the one-time regeneration.
 				if saveErr := s.saveBootstrapState(statePath, state); saveErr != nil {
 					return saveErr
 				}
@@ -569,8 +584,15 @@ func (s *BootstrapService) executeBootstrapSteps(ctx context.Context, selectedSt
 		stepDuration := time.Since(stepStart).Round(time.Millisecond)
 
 		// Mark step as successful
+		if legacyApplyHandoff {
+			// The v1 apply status is historical evidence and must remain
+			// untouched; only consume the handoff marker after the apply ran.
+			state.LegacyApplyHandoffPending = false
+		}
 		if stateEnabled {
-			s.setStepStatus(state, step.ID, bootstrapStatusSuccess, "")
+			if !legacyApplyHandoff {
+				s.setStepStatus(state, step.ID, bootstrapStatusSuccess, "")
+			}
 			if err := s.saveBootstrapState(statePath, state); err != nil {
 				return err
 			}
@@ -788,10 +810,111 @@ func (s *BootstrapService) loadBootstrapState(path string) (*bootstrapState, boo
 		state.Steps = make(map[string]bootstrapStepState)
 	}
 	if state.Version == 0 {
-		state.Version = bootstrapStateVersion
+		// State files written before the version field was introduced have the
+		// same semantics as the v1 lifecycle and are migrated below.
+		state.Version = 1
+	}
+	if state.Version > bootstrapStateVersion {
+		return nil, true, fmt.Errorf("unsupported bootstrap state version %d (current version is %d)", state.Version, bootstrapStateVersion)
 	}
 
 	return &state, true, nil
+}
+
+// migrateBootstrapState upgrades the v1 lifecycle without treating the
+// current configuration as evidence of what the v1 apply did. An existing
+// successful later Kubernetes step is the only evidence used to backfill
+// preceding lifecycle steps. If that evidence is absent, a successful legacy
+// apply is handed off to the CLI lifecycle once so the new contract outputs
+// are regenerated.
+//
+// The optional config argument keeps callers that only have a legacy state
+// compatible. Bootstrap always supplies the v2 config; the no-config form is
+// retained for old state migration tests and is not used by production
+// migration.
+func migrateBootstrapState(state *bootstrapState, steps []bootstrapStep, configs ...*v2.Config) bool {
+	if state == nil || state.Version >= bootstrapStateVersion {
+		return false
+	}
+	if state.Steps == nil {
+		state.Steps = make(map[string]bootstrapStepState)
+	}
+	apply, ok := state.Steps["opentofu-apply"]
+	legacyDeploymentCompleted := ok && apply.Status == bootstrapStatusSuccess
+	state.Version = bootstrapStateVersion
+
+	completionEvidence := hasKubernetesCompletionEvidence(state, steps)
+	if legacyDeploymentCompleted && !completionEvidence && len(configs) > 0 {
+		// The v1 apply provisioned infrastructure without the v2 lifecycle
+		// outputs. Re-run it once in CLI mode before starting the new stages;
+		// keep the original apply status as historical evidence.
+		state.LegacyApplyHandoffPending = true
+	}
+
+	for i, step := range steps {
+		if !isKubesprayLifecycleStep(step.ID) {
+			continue
+		}
+
+		// Do not replace failed, running, skipped, or successful prior state.
+		// In particular, a failed lifecycle step must remain retryable.
+		if _, exists := state.Steps[step.ID]; exists {
+			continue
+		}
+
+		// Calls without config are retained for older migration tests. The
+		// production path always supplies config and therefore never uses
+		// AutoDeploy as migration evidence.
+		provenCompleted := len(configs) == 0 && legacyDeploymentCompleted
+		provenCompleted = provenCompleted || hasSuccessfulLaterKubernetesStep(state, steps, i)
+		if provenCompleted {
+			state.Steps[step.ID] = bootstrapStepState{
+				Status:    bootstrapStatusSuccess,
+				UpdatedAt: apply.UpdatedAt,
+			}
+		}
+	}
+	return true
+}
+
+func hasKubernetesCompletionEvidence(state *bootstrapState, steps []bootstrapStep) bool {
+	for i, step := range steps {
+		if isKubesprayLifecycleStep(step.ID) && hasSuccessfulLaterKubernetesStep(state, steps, i) {
+			return true
+		}
+	}
+	return false
+}
+
+func isKubesprayLifecycleStep(stepID string) bool {
+	switch stepID {
+	case "kubespray-prepare", "kubespray-wait-cloudinit", "kubespray-os-hardening", "kubespray-deploy", "kubespray-export-kubeconfig":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasSuccessfulLaterKubernetesStep(state *bootstrapState, steps []bootstrapStep, lifecycleIndex int) bool {
+	for _, step := range steps[lifecycleIndex+1:] {
+		if !isKubesprayLifecycleStep(step.ID) && !isLegacyKubernetesCompletionStep(step.ID) {
+			continue
+		}
+		stepState, ok := state.Steps[step.ID]
+		if ok && (stepState.Status == bootstrapStatusSuccess || stepState.Status == bootstrapStatusSkipped) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLegacyKubernetesCompletionStep(stepID string) bool {
+	switch stepID {
+	case "openstack-normalize-kubeconfig", "openstack-install-network-plugin":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *BootstrapService) loadBootstrapStateWithFallback(path, fallbackPath string) (*bootstrapState, string, error) {

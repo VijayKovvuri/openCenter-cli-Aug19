@@ -261,6 +261,187 @@ func TestBootstrapService_filterSteps(t *testing.T) {
 	}
 }
 
+func TestBootstrapService_migrateBootstrapState(t *testing.T) {
+	steps := []bootstrapStep{
+		{ID: "kubespray-prepare"},
+		{ID: "kubespray-wait-cloudinit"},
+		{ID: "kubespray-os-hardening"},
+		{ID: "kubespray-deploy"},
+		{ID: "kubespray-export-kubeconfig"},
+		{ID: "openstack-normalize-kubeconfig"},
+	}
+
+	tests := []struct {
+		name             string
+		autoDeploy       bool
+		applyStatus      string
+		laterStepStatus  string
+		priorDeployState string
+		wantSynthetic    bool
+		wantPriorStatus  string
+		wantHandoff      bool
+	}{
+		{
+			name:          "current auto deploy does not prove historical deployment",
+			autoDeploy:    true,
+			applyStatus:   bootstrapStatusSuccess,
+			wantSynthetic: false,
+			wantHandoff:   true,
+		},
+		{
+			name:          "legacy infrastructure only leaves lifecycle pending",
+			autoDeploy:    false,
+			applyStatus:   bootstrapStatusSuccess,
+			wantSynthetic: false,
+			wantHandoff:   true,
+		},
+		{
+			name:            "later Kubernetes step proves preceding lifecycle",
+			autoDeploy:      false,
+			applyStatus:     bootstrapStatusSuccess,
+			laterStepStatus: bootstrapStatusSuccess,
+			wantSynthetic:   true,
+			wantHandoff:     false,
+		},
+		{
+			name:             "prior failed status is preserved",
+			autoDeploy:       true,
+			applyStatus:      bootstrapStatusSuccess,
+			priorDeployState: bootstrapStatusFailed,
+			wantSynthetic:    false,
+			wantPriorStatus:  bootstrapStatusFailed,
+			wantHandoff:      true,
+		},
+		{
+			name:          "failed legacy apply leaves lifecycle pending",
+			autoDeploy:    true,
+			applyStatus:   bootstrapStatusFailed,
+			wantSynthetic: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &bootstrapState{
+				Version: 1,
+				Steps: map[string]bootstrapStepState{
+					"opentofu-apply": {Status: tt.applyStatus, UpdatedAt: "2026-01-01T00:00:00Z"},
+				},
+			}
+			if tt.laterStepStatus != "" {
+				state.Steps["openstack-normalize-kubeconfig"] = bootstrapStepState{Status: tt.laterStepStatus}
+			}
+			if tt.priorDeployState != "" {
+				state.Steps["kubespray-deploy"] = bootstrapStepState{Status: tt.priorDeployState}
+			}
+
+			cfg := &v2.Config{Deployment: v2.DeploymentConfig{AutoDeploy: tt.autoDeploy}}
+			if !migrateBootstrapState(state, steps, cfg) {
+				t.Fatal("migrateBootstrapState() reported no migration")
+			}
+			if state.Version != bootstrapStateVersion {
+				t.Fatalf("version = %d, want %d", state.Version, bootstrapStateVersion)
+			}
+			if state.LegacyApplyHandoffPending != tt.wantHandoff {
+				t.Fatalf("legacy apply handoff pending = %v, want %v", state.LegacyApplyHandoffPending, tt.wantHandoff)
+			}
+
+			for _, step := range steps[:5] {
+				stepState, exists := state.Steps[step.ID]
+				wantExists := tt.wantSynthetic
+				if step.ID == "kubespray-deploy" && tt.wantPriorStatus != "" {
+					wantExists = true
+				}
+				if exists != wantExists {
+					t.Errorf("step %q exists = %v, want %v", step.ID, exists, wantExists)
+				}
+				if step.ID == "kubespray-deploy" && tt.wantPriorStatus != "" && stepState.Status != tt.wantPriorStatus {
+					t.Errorf("step %q status = %q, want %q", step.ID, stepState.Status, tt.wantPriorStatus)
+				}
+			}
+		})
+	}
+}
+
+func TestBootstrapService_LegacyApplyHandoffRunsOnceBeforeLifecycle(t *testing.T) {
+	state := &bootstrapState{
+		Version: 1,
+		Steps: map[string]bootstrapStepState{
+			"opentofu-apply": {
+				Status:    bootstrapStatusSuccess,
+				UpdatedAt: "2026-01-01T00:00:00Z",
+			},
+		},
+	}
+
+	var executed []string
+	contractOutputs := false
+	steps := []bootstrapStep{
+		{
+			ID: "opentofu-apply",
+			Run: func(context.Context) error {
+				executed = append(executed, "opentofu-apply")
+				contractOutputs = true
+				return nil
+			},
+		},
+		{
+			ID: "kubespray-prepare",
+			Run: func(context.Context) error {
+				if !contractOutputs {
+					t.Error("kubespray lifecycle started before CLI handoff produced contract outputs")
+				}
+				executed = append(executed, "kubespray-prepare")
+				return nil
+			},
+		},
+	}
+
+	if !migrateBootstrapState(state, steps, &v2.Config{Deployment: v2.DeploymentConfig{AutoDeploy: true}}) {
+		t.Fatal("migrateBootstrapState() reported no migration")
+	}
+	if state.Version != bootstrapStateVersion || !state.LegacyApplyHandoffPending {
+		t.Fatalf("migrated state = %#v, want v2 with pending handoff", state)
+	}
+
+	service := NewBootstrapService(paths.NewPathResolver(t.TempDir()), validation.NewValidationEngine())
+	statePath := filepath.Join(t.TempDir(), "bootstrap-state.json")
+	if err := service.saveBootstrapState(statePath, state); err != nil {
+		t.Fatalf("saveBootstrapState() error = %v", err)
+	}
+	if err := service.executeBootstrapSteps(context.Background(), steps, false, true, statePath, state, &BootstrapResult{}, &BootstrapOptions{}); err != nil {
+		t.Fatalf("executeBootstrapSteps() error = %v", err)
+	}
+
+	if got, want := strings.Join(executed, ","), "opentofu-apply,kubespray-prepare"; got != want {
+		t.Fatalf("executed steps = %q, want %q", got, want)
+	}
+	if got := state.Steps["opentofu-apply"]; got.Status != bootstrapStatusSuccess || got.UpdatedAt != "2026-01-01T00:00:00Z" {
+		t.Fatalf("historical apply status = %#v, want unchanged success record", got)
+	}
+	if state.LegacyApplyHandoffPending {
+		t.Fatal("legacy apply handoff remained pending after successful apply")
+	}
+
+	persisted, _, err := service.loadBootstrapState(statePath)
+	if err != nil {
+		t.Fatalf("loadBootstrapState() error = %v", err)
+	}
+	if persisted.LegacyApplyHandoffPending {
+		t.Fatal("persisted legacy apply handoff remained pending")
+	}
+	if got := persisted.Steps["opentofu-apply"]; got.Status != bootstrapStatusSuccess || got.UpdatedAt != "2026-01-01T00:00:00Z" {
+		t.Fatalf("persisted historical apply status = %#v, want unchanged success record", got)
+	}
+
+	if err := service.executeBootstrapSteps(context.Background(), steps, false, true, statePath, persisted, &BootstrapResult{}, &BootstrapOptions{}); err != nil {
+		t.Fatalf("second executeBootstrapSteps() error = %v", err)
+	}
+	if got, want := strings.Join(executed, ","), "opentofu-apply,kubespray-prepare"; got != want {
+		t.Fatalf("steps after second execution = %q, want %q", got, want)
+	}
+}
+
 func TestBootstrapService_executeBootstrapStepsPrintsDebugPreambleBeforeStepRun(t *testing.T) {
 	pathResolver := paths.NewPathResolver(t.TempDir())
 	bootstrapService := NewBootstrapService(pathResolver, validation.NewValidationEngine())
@@ -564,7 +745,7 @@ func TestBootstrapService_DryRunOpenStackBuildsPlanWithoutPrerequisites(t *testi
 	if result.Plan == nil {
 		t.Fatal("expected dry-run plan")
 	}
-	wantIDs := []string{"preflight", "opentofu-init", "opentofu-apply", "openstack-normalize-kubeconfig", "openstack-install-network-plugin"}
+	wantIDs := []string{"preflight", "opentofu-init", "opentofu-apply", "kubespray-prepare", "kubespray-wait-cloudinit", "kubespray-deploy", "kubespray-export-kubeconfig", "openstack-normalize-kubeconfig", "openstack-install-network-plugin"}
 	if got := planStepIDs(result.Plan); strings.Join(got, ",") != strings.Join(wantIDs, ",") {
 		t.Fatalf("plan steps = %v, want %v", got, wantIDs)
 	}
@@ -840,7 +1021,7 @@ func TestBootstrapService_DryRunVMwareBuildsPlan(t *testing.T) {
 	if result.Plan.Provider != "vmware" {
 		t.Fatalf("provider = %q, want vmware", result.Plan.Provider)
 	}
-	wantIDs := []string{"preflight", "opentofu-init", "opentofu-apply", "openstack-normalize-kubeconfig", "openstack-install-network-plugin"}
+	wantIDs := []string{"preflight", "opentofu-init", "opentofu-apply", "kubespray-prepare", "kubespray-wait-cloudinit", "kubespray-deploy", "kubespray-export-kubeconfig", "openstack-normalize-kubeconfig", "openstack-install-network-plugin"}
 	if got := planStepIDs(result.Plan); strings.Join(got, ",") != strings.Join(wantIDs, ",") {
 		t.Fatalf("plan steps = %v, want %v", got, wantIDs)
 	}
@@ -980,7 +1161,7 @@ func TestBootstrapService_DryRunBaremetalBuildsPlan(t *testing.T) {
 	if result.Plan.Provider != "baremetal" {
 		t.Fatalf("provider = %q, want baremetal", result.Plan.Provider)
 	}
-	wantIDs := []string{"preflight", "opentofu-init", "opentofu-apply", "openstack-normalize-kubeconfig", "openstack-install-network-plugin"}
+	wantIDs := []string{"preflight", "opentofu-init", "opentofu-apply", "kubespray-prepare", "kubespray-wait-cloudinit", "kubespray-deploy", "kubespray-export-kubeconfig", "openstack-normalize-kubeconfig", "openstack-install-network-plugin"}
 	if got := planStepIDs(result.Plan); strings.Join(got, ",") != strings.Join(wantIDs, ",") {
 		t.Fatalf("plan steps = %v, want %v", got, wantIDs)
 	}

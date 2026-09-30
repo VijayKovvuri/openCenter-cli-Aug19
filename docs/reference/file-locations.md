@@ -46,6 +46,11 @@ Every directory role below is resolved the same way (see [Configuration Preceden
     └── ssh/<cluster>                         # cluster SSH keypair
 ```
 
+The CLI-owned Kubespray lifecycle keeps its copied inventory, Kubespray checkout,
+Python virtual environment, and `kubespray-outputs.json` under the cluster state
+directory. The rendered GitOps infrastructure directory is used only for
+OpenTofu initialization/apply and is not used as the Kubespray execution root.
+
 See [Cluster Init Details](../contributing/cluster-init-details.md) for exactly which of these paths `cluster init` writes into the config (`opencenter.gitops.repository.local_dir`, `infrastructure.ssh.key_path`, `secrets.ssh_key.private`/`.public`, `secrets.sops_age_key_file`, `secrets.sops.age_key_file`). Legacy co-located layouts are migration inputs, not the canonical paths above.
 
 ## Runtime state and logs

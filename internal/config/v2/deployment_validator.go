@@ -35,6 +35,9 @@ func (d *KubesprayDeployment) ValidateConfig(cfg *Config) error {
 	if cfg.OpenCenter.Infrastructure.Compute.MasterCount == 0 {
 		return fmt.Errorf("kubespray requires master_count > 0")
 	}
+	if err := validateKubesprayCloudInitTimeout(cfg.Deployment.Kubespray); err != nil {
+		return err
+	}
 	return nil
 }
 

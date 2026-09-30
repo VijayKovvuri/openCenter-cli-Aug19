@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,6 +84,20 @@ func TestOpenStackBootstrapProviderUsesOpenTofuAndNormalizesKubeconfig(t *testin
 	if err := os.MkdirAll(clusterDir, 0o755); err != nil {
 		t.Fatalf("mkdir cluster dir: %v", err)
 	}
+	inventoryDir := filepath.Join(clusterDir, "inventory")
+	if err := os.MkdirAll(inventoryDir, 0o755); err != nil {
+		t.Fatalf("mkdir inventory dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(inventoryDir, "inventory.yaml"), []byte("all:\n"), 0o600); err != nil {
+		t.Fatalf("write inventory: %v", err)
+	}
+	calicoValuesDir := filepath.Join(cfg.OpenCenter.GitOps.Repository.LocalDir, "applications", "overlays", clusterName, "services", "calico", "helm-values")
+	if err := os.MkdirAll(calicoValuesDir, 0o755); err != nil {
+		t.Fatalf("mkdir Calico values dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(calicoValuesDir, "override_values.yaml"), []byte("installation: {}\n"), 0o600); err != nil {
+		t.Fatalf("write Calico values: %v", err)
+	}
 
 	localhostKubeconfig := `apiVersion: v1
 clusters:
@@ -105,10 +120,27 @@ users:
 	targetKubeconfig := filepath.Join(t.TempDir(), "owned", "kubeconfig.yaml")
 	fakeRunner := &fakeLifecycleRunner{
 		onRun: func(dir string, env map[string]string, name string, args ...string) ([]byte, error) {
+			if name == "tofu" && len(args) > 0 && args[0] == "output" {
+				return []byte(`{"opencenter_kubespray_inventory_path":{"value":"` + filepath.Join(dir, "inventory", "inventory.yaml") + `"},"opencenter_kubespray_lifecycle_contract_version":{"value":1},"opencenter_kubespray_api_address":{"value":"10.2.128.5"},"opencenter_kubespray_api_port":{"value":6443}}`), nil
+			}
 			if len(args) > 0 && args[0] == "apply" {
 				sourceKubeconfig := filepath.Join(clusterDir, "kubeconfig.yaml")
 				if err := os.WriteFile(sourceKubeconfig, []byte(localhostKubeconfig), 0o600); err != nil {
 					t.Fatalf("write source kubeconfig: %v", err)
+				}
+			}
+			if strings.HasSuffix(name, string(filepath.Separator)+"ansible") && strings.Contains(strings.Join(args, " "), " -m fetch ") {
+				for i, arg := range args {
+					if arg != "-a" || i+1 >= len(args) {
+						continue
+					}
+					for _, part := range strings.Fields(args[i+1]) {
+						if strings.HasPrefix(part, "dest=") {
+							if err := os.WriteFile(strings.TrimPrefix(part, "dest="), []byte(localhostKubeconfig), 0o600); err != nil {
+								t.Fatalf("write fetched kubeconfig: %v", err)
+							}
+						}
+					}
 				}
 			}
 			return nil, nil
@@ -121,25 +153,28 @@ users:
 		t.Fatalf("BuildSteps() error = %v", err)
 	}
 
-	wantIDs := []string{"preflight", "opentofu-init", "opentofu-apply", "openstack-normalize-kubeconfig", "openstack-install-network-plugin"}
+	wantIDs := []string{"preflight", "opentofu-init", "opentofu-apply", "kubespray-prepare", "kubespray-wait-cloudinit", "kubespray-deploy", "kubespray-export-kubeconfig", "openstack-normalize-kubeconfig", "openstack-install-network-plugin"}
 	if got := bootstrapStepIDs(steps); strings.Join(got, ",") != strings.Join(wantIDs, ",") {
 		t.Fatalf("BuildSteps() IDs = %v, want %v", got, wantIDs)
 	}
 
-	for _, step := range steps[:4] {
+	for _, step := range steps {
 		if err := step.Run(context.Background()); err != nil {
 			t.Fatalf("step %q failed: %v", step.ID, err)
 		}
 	}
 
-	if len(fakeRunner.calls) != 2 {
-		t.Fatalf("expected tofu init/apply lifecycle commands, got %d", len(fakeRunner.calls))
+	if len(fakeRunner.calls) < 7 {
+		t.Fatalf("expected tofu and Kubespray lifecycle commands, got %d", len(fakeRunner.calls))
 	}
 	if fakeRunner.calls[0].name != "tofu" || len(fakeRunner.calls[0].args) == 0 || fakeRunner.calls[0].args[0] != "init" {
 		t.Fatalf("expected first command to be tofu init, got %#v", fakeRunner.calls[0])
 	}
-	if fakeRunner.calls[1].name != "tofu" || len(fakeRunner.calls[1].args) < 2 || fakeRunner.calls[1].args[0] != "apply" || fakeRunner.calls[1].args[1] != "-auto-approve" {
-		t.Fatalf("expected second command to be tofu apply -auto-approve, got %#v", fakeRunner.calls[1])
+	if fakeRunner.calls[1].name != "tofu" || len(fakeRunner.calls[1].args) != 2 || fakeRunner.calls[1].args[0] != "state" || fakeRunner.calls[1].args[1] != "list" {
+		t.Fatalf("expected second command to be tofu state list, got %#v", fakeRunner.calls[1])
+	}
+	if fakeRunner.calls[2].name != "tofu" || len(fakeRunner.calls[2].args) < 3 || fakeRunner.calls[2].args[0] != "apply" || fakeRunner.calls[2].args[1] != "-auto-approve" || fakeRunner.calls[2].args[2] != "-var=opencenter_lifecycle_mode=cli" {
+		t.Fatalf("expected third command to be tofu apply -auto-approve, got %#v", fakeRunner.calls[2])
 	}
 
 	if fakeRunner.calls[0].env["OS_AUTH_URL"] != "https://keystone.example.com/v3" {
@@ -179,10 +214,26 @@ func TestBootstrapServiceOpenStackProvisionInfrastructureHonorsSavedState(t *tes
 
 	fakeRunner := &fakeLifecycleRunner{
 		onRun: func(dir string, env map[string]string, name string, args ...string) ([]byte, error) {
+			if name == "tofu" && len(args) > 0 && args[0] == "output" {
+				return []byte(`{"opencenter_kubespray_inventory_path":{"value":"` + filepath.Join(dir, "inventory", "inventory.yaml") + `"},"opencenter_kubespray_lifecycle_contract_version":{"value":1},"opencenter_kubespray_api_address":{"value":"10.2.128.5"},"opencenter_kubespray_api_port":{"value":6443}}`), nil
+			}
 			if len(args) > 0 && args[0] == "apply" {
 				sourceKubeconfig := filepath.Join(dir, "kubeconfig.yaml")
 				if err := os.WriteFile(sourceKubeconfig, []byte("apiVersion: v1\n"), 0o600); err != nil {
 					t.Fatalf("write source kubeconfig: %v", err)
+				}
+			}
+			if strings.HasSuffix(name, string(filepath.Separator)+"ansible") && strings.Contains(strings.Join(args, " "), " -m fetch ") {
+				for i, arg := range args {
+					if arg == "-a" && i+1 < len(args) {
+						for _, part := range strings.Fields(args[i+1]) {
+							if strings.HasPrefix(part, "dest=") {
+								if err := os.WriteFile(strings.TrimPrefix(part, "dest="), []byte("apiVersion: v1\nserver: https://127.0.0.1:6443\n"), 0o600); err != nil {
+									t.Fatalf("write fetched kubeconfig: %v", err)
+								}
+							}
+						}
+					}
 				}
 			}
 			return nil, nil
@@ -209,6 +260,13 @@ func TestBootstrapServiceOpenStackProvisionInfrastructureHonorsSavedState(t *tes
 	clusterDir := filepath.Join(cfg.OpenCenter.GitOps.Repository.LocalDir, "infrastructure", "clusters", clusterName)
 	if err := os.MkdirAll(clusterDir, 0o755); err != nil {
 		t.Fatalf("mkdir cluster dir: %v", err)
+	}
+	inventoryDir := filepath.Join(clusterDir, "inventory")
+	if err := os.MkdirAll(inventoryDir, 0o755); err != nil {
+		t.Fatalf("mkdir inventory dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(inventoryDir, "inventory.yaml"), []byte("all:\n"), 0o600); err != nil {
+		t.Fatalf("write inventory: %v", err)
 	}
 
 	// Create the Calico Helm override values file expected by the Helm install step
@@ -243,15 +301,18 @@ func TestBootstrapServiceOpenStackProvisionInfrastructureHonorsSavedState(t *tes
 		t.Fatalf("provisionInfrastructure() error = %v", err)
 	}
 
-	if len(fakeRunner.calls) < 3 {
-		t.Fatalf("expected opentofu init, opentofu apply, and network plugin commands to run after resuming, got %d calls", len(fakeRunner.calls))
+	if len(fakeRunner.calls) < 4 {
+		t.Fatalf("expected opentofu init, state list, opentofu apply, and network plugin commands to run after resuming, got %d calls", len(fakeRunner.calls))
 	}
 	// opentofu-init always runs (NeverSkip) even when state marks it as completed
 	if len(fakeRunner.calls[0].args) == 0 || fakeRunner.calls[0].args[0] != "init" {
 		t.Fatalf("expected first resumed command to be opentofu init (NeverSkip), got %#v", fakeRunner.calls[0])
 	}
-	if len(fakeRunner.calls[1].args) == 0 || fakeRunner.calls[1].args[0] != "apply" {
-		t.Fatalf("expected second resumed command to be opentofu apply, got %#v", fakeRunner.calls[1])
+	if len(fakeRunner.calls[1].args) != 2 || fakeRunner.calls[1].args[0] != "state" || fakeRunner.calls[1].args[1] != "list" {
+		t.Fatalf("expected second resumed command to be opentofu state list, got %#v", fakeRunner.calls[1])
+	}
+	if len(fakeRunner.calls[2].args) == 0 || fakeRunner.calls[2].args[0] != "apply" {
+		t.Fatalf("expected third resumed command to be opentofu apply, got %#v", fakeRunner.calls[2])
 	}
 	assertRecordedCommandContains(t, fakeRunner.calls, "helm", "repo add projectcalico")
 	assertRecordedCommandContains(t, fakeRunner.calls, "helm", "upgrade --install calico projectcalico/tigera-operator")
@@ -260,6 +321,103 @@ func TestBootstrapServiceOpenStackProvisionInfrastructureHonorsSavedState(t *tes
 	}
 	if _, err := os.Stat(runtimePaths.StatePath); err != nil {
 		t.Fatalf("expected migrated bootstrap state at %s: %v", runtimePaths.StatePath, err)
+	}
+}
+
+func TestOpenTofuCalicoSafetyGuards(t *testing.T) {
+	tests := []struct {
+		name      string
+		method    string
+		state     string
+		stateErr  error
+		mutate    func(string) error
+		wantErr   string
+		wantCalls []string
+	}{
+		{
+			name:      "state detection fails closed",
+			method:    "helm",
+			state:     "module.calico.local_file.calico_values",
+			wantErr:   "tofu state rm 'module.calico.local_file.calico_values'",
+			wantCalls: []string{"tofu state list"},
+		},
+		{
+			name:      "missing state file is treated as empty",
+			method:    "helm",
+			state:     "No state file was found!\n",
+			stateErr:  errors.New("command failed: tofu state list: exit status 1\nOutput: No state file was found!\n"),
+			wantCalls: []string{"tofu state list", "tofu apply -auto-approve -var=opencenter_lifecycle_mode=cli"},
+		},
+		{
+			name:      "unchanged tree succeeds",
+			method:    "",
+			wantCalls: []string{"tofu state list", "tofu apply -auto-approve -var=opencenter_lifecycle_mode=cli"},
+		},
+		{
+			name:   "mutation fails",
+			method: "kustomize-helm",
+			mutate: func(root string) error {
+				return os.WriteFile(filepath.Join(root, "helm-values", "override_values.yaml"), []byte("changed\n"), 0o600)
+			},
+			wantErr:   "changed helm-values/override_values.yaml",
+			wantCalls: []string{"tofu state list", "tofu apply -auto-approve -var=opencenter_lifecycle_mode=cli"},
+		},
+		{
+			name:      "kubespray bypasses guard",
+			method:    "kubespray",
+			state:     "module.calico.local_file.calico_values",
+			wantCalls: []string{"tofu apply -auto-approve -var=opencenter_lifecycle_mode=cli"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := mustNewClusterTestConfig("calico-safety", "openstack")
+			cfg.OpenCenter.GitOps.Repository.LocalDir = t.TempDir()
+			cfg.OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.InstallMethod = tt.method
+			root, err := calicoGitOpsFilesRoot(&cfg)
+			if err != nil {
+				t.Fatalf("calicoGitOpsFilesRoot() error = %v", err)
+			}
+			valuesPath := filepath.Join(root, "helm-values", "override_values.yaml")
+			if err := os.MkdirAll(filepath.Dir(valuesPath), 0o755); err != nil {
+				t.Fatalf("mkdir Calico GitOps files: %v", err)
+			}
+			if err := os.WriteFile(valuesPath, []byte("unchanged\n"), 0o600); err != nil {
+				t.Fatalf("write Calico GitOps file: %v", err)
+			}
+
+			runner := &fakeLifecycleRunner{
+				onRun: func(dir string, env map[string]string, name string, args ...string) ([]byte, error) {
+					if len(args) > 0 && args[0] == "state" {
+						return []byte(tt.state), tt.stateErr
+					}
+					if len(args) > 0 && args[0] == "apply" && tt.mutate != nil {
+						if err := tt.mutate(root); err != nil {
+							return nil, err
+						}
+					}
+					return nil, nil
+				},
+			}
+			provider := &openstackBootstrapProvider{runner: runner}
+			err = provider.runOpenTofuApply(context.Background(), &cfg, filepath.Join(t.TempDir(), "infrastructure"), nil, "tofu")
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("runOpenTofuApply() error = %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("runOpenTofuApply() error = %v, want substring %q", err, tt.wantErr)
+			}
+
+			var gotCalls []string
+			for _, call := range runner.calls {
+				gotCalls = append(gotCalls, call.name+" "+strings.Join(call.args, " "))
+			}
+			if strings.Join(gotCalls, "\x00") != strings.Join(tt.wantCalls, "\x00") {
+				t.Fatalf("commands = %v, want %v", gotCalls, tt.wantCalls)
+			}
+		})
 	}
 }
 
@@ -695,5 +853,26 @@ clusters:
 	// With empty VIP, localhost should be preserved.
 	if !strings.Contains(string(data), "https://127.0.0.1:6443") {
 		t.Errorf("expected localhost to be preserved when VIP is empty:\n%s", string(data))
+	}
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("target kubeconfig mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestNormalizeOpenStackKubeconfigRejectsInvalidYAMLBeforeReplacement(t *testing.T) {
+	clusterDir := t.TempDir()
+	targetPath := filepath.Join(t.TempDir(), "kubeconfig.yaml")
+	if err := os.WriteFile(filepath.Join(clusterDir, "kubeconfig.yaml"), []byte("clusters: [\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := normalizeOpenStackKubeconfig(clusterDir, targetPath, "10.2.128.5"); err == nil {
+		t.Fatal("normalizeOpenStackKubeconfig() accepted invalid YAML")
+	}
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("invalid kubeconfig created target, stat error = %v", err)
 	}
 }
