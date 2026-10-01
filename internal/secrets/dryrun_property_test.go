@@ -43,26 +43,10 @@ const dryRunTestOrg = "test-org"
 func configureDryRunTestEnv(t *testing.T, tmpDir string) {
 	t.Helper()
 
-	originalHome := os.Getenv("HOME")
-	originalConfigDir := os.Getenv("OPENCENTER_CONFIG_DIR")
 	configDir := filepath.Join(tmpDir, ".config", "opencenter")
 
 	require.NoError(t, os.MkdirAll(configDir, 0o755))
-	require.NoError(t, os.Setenv("HOME", tmpDir))
-	require.NoError(t, os.Setenv("OPENCENTER_CONFIG_DIR", configDir))
-
-	t.Cleanup(func() {
-		if originalHome == "" {
-			os.Unsetenv("HOME")
-		} else {
-			os.Setenv("HOME", originalHome)
-		}
-		if originalConfigDir == "" {
-			os.Unsetenv("OPENCENTER_CONFIG_DIR")
-		} else {
-			os.Setenv("OPENCENTER_CONFIG_DIR", originalConfigDir)
-		}
-	})
+	t.Setenv("OPENCENTER_CONFIG_DIR", configDir)
 }
 
 func createDryRunClusterPaths(ctx context.Context, clusterName string) (*paths.ClusterPaths, error) {

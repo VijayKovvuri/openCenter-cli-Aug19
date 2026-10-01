@@ -195,15 +195,9 @@ func TestProperty_RevocationEffectiveness(t *testing.T) {
 func setupRevocationTest(t *testing.T, tmpDir string, clusterName string, secrets map[string]string) (*DefaultKeyRevoker, string, string, string, string, string, error) {
 	t.Helper()
 
-	// Redirect HOME into the temp dir. Cluster config lookup resolves through
-	// ~/.config/opencenter (see DefaultSecretsManager.getConfigPath), so without
-	// this the revoker reads the developer's real config tree instead of the
-	// fixture. setupDryRunRevocationTest does the same.
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	t.Cleanup(func() {
-		os.Setenv("HOME", originalHome)
-	})
+	// Isolate OpenCenter config without changing HOME. External tools such as
+	// SOPS must keep the caller's normal environment and PATH behavior.
+	t.Setenv("OPENCENTER_CONFIG_DIR", filepath.Join(tmpDir, ".config", "opencenter"))
 
 	// Create logger
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
