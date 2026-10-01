@@ -1,5 +1,6 @@
 [tools]
 golangci-lint = "2.14.0"
+vale = "3.23.0"
 kubectl = "latest"
 kind = "latest"
 helm = "latest"
@@ -764,7 +765,8 @@ fi
 
 pre-commit install --config .pre-commit-config.yaml --hook-type pre-commit
 echo "Git hooks installed from the tracked .pre-commit-config.yaml."
-echo "The hook runs gitleaks and requires maintained docs for public behavior changes."
+echo "The hook runs gitleaks, validates docs frontmatter, lints staged Markdown with Vale,"
+echo "and requires maintained docs for public behavior changes."
 '''
 
 # ---------------------------------------------------------------------------

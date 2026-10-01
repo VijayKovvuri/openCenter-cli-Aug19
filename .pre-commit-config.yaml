@@ -16,3 +16,15 @@ repos:
         # land in a batch without the accompanying doc and fail spuriously.
         # require_serial forces a single invocation that sees every changed file.
         require_serial: true
+      - id: doc-frontmatter
+        name: Validate docs frontmatter (Diátaxis keys + YAML-safe values)
+        entry: python3 hack/scripts/audit_doc_frontmatter.py --strict --files
+        language: system
+        files: ^docs/.*\.md$
+        pass_filenames: true
+      - id: vale
+        name: Vale prose lint (staged Markdown)
+        entry: vale
+        language: system
+        types: [markdown]
+        require_serial: true

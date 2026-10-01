@@ -69,6 +69,7 @@ DEFAULT_IGNORES = (
 # Slug must match the steering rule: lowercase + digits + hyphens.
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_YAML_INDICATOR_START = frozenset(",[]{}#&*!|>%@`")
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +152,34 @@ def parse_tags(raw: str) -> list[str]:
     return [unquote(raw)] if raw else []
 
 
+def plain_scalar_problem(value: str) -> str | None:
+    """Return why a raw value is unsafe in the supported YAML subset."""
+    scalar = value.strip()
+    if not scalar:
+        return None
+
+    if scalar[0] in ("\"", "'"):
+        if len(scalar) < 2 or scalar[-1] != scalar[0]:
+            return "has an unterminated quoted string"
+        return None
+
+    if scalar[0] in "[{":
+        expected_end = "]" if scalar[0] == "[" else "}"
+        if not scalar.endswith(expected_end):
+            return "has an unterminated flow collection"
+        return None
+
+    if scalar[0] in _YAML_INDICATOR_START or (
+        scalar[0] in "-?:" and (len(scalar) == 1 or scalar[1].isspace())
+    ):
+        return f"starts with YAML indicator '{scalar[0]}'; quote the value"
+    if ": " in scalar or scalar.endswith(":"):
+        return "contains ': ', which is invalid in an unquoted YAML value; quote it"
+    if " #" in scalar:
+        return "contains ' #', which YAML treats as a comment; quote it"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Audit rules
 # ---------------------------------------------------------------------------
@@ -170,6 +199,11 @@ def audit_file(path: Path) -> list[Issue]:
     for key in REQUIRED_KEYS:
         if key not in fm:
             issues.append(Issue(path, f"missing required key: {key}"))
+
+    for key, raw_value in fm.items():
+        problem = plain_scalar_problem(raw_value)
+        if problem:
+            issues.append(Issue(path, f"{key} {problem}"))
 
     doc_type = unquote(fm.get("doc_type", ""))
     if doc_type and doc_type not in ALLOWED_DOC_TYPES:

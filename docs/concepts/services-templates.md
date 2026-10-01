@@ -2,7 +2,7 @@
 last_updated: 2026-09-24
 id: services-templates
 title: "Service Templates: How They Work"
-sidebar_label: Service Templates: How They Work
+sidebar_label: "Service Templates: How They Work"
 description: How openCenter generates, deploys, and manages platform service configurations using the cert-manager service as a worked example.
 doc_type: explanation
 audience: "platform engineers, operators"
