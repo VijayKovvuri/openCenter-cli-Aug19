@@ -137,6 +137,7 @@ func (g generator) structSchema(t reflect.Type) map[string]any {
 		}
 
 		fieldSchema := g.schemaFor(field.Type, field.Tag.Get("validate"))
+		applyValidation(fieldSchema, field.Tag.Get("jsonschema_validate"))
 		if deprecated, ok := services.LookupDeprecatedServiceConfigKey(name); ok {
 			fieldSchema["deprecated"] = true
 			fieldSchema["description"] = fmt.Sprintf("Deprecated: %s. Guidance: %s", deprecated.Reason, deprecated.Guidance)

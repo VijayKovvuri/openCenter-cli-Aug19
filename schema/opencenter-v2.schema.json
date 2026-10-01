@@ -714,9 +714,15 @@
                       "additionalProperties": false,
                       "properties": {
                         "autodetect_cidr": {
+                          "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$",
                           "type": "string"
                         },
                         "calico_interface_autodetect": {
+                          "enum": [
+                            "first-found",
+                            "interface",
+                            "cidr"
+                          ],
                           "type": "string"
                         },
                         "cni_iface": {

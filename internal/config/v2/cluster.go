@@ -102,9 +102,9 @@ type CalicoConfig struct {
 	IPIPMode                  string           `yaml:"ipip_mode,omitempty" json:"ipip_mode,omitempty" validate:"omitempty,oneof=Always CrossSubnet Never"`
 	VXLANMode                 string           `yaml:"vxlan_mode,omitempty" json:"vxlan_mode,omitempty" validate:"omitempty,oneof=Always CrossSubnet Never"`
 	NetworkPolicy             bool             `yaml:"network_policy" json:"network_policy"`
-	CNIIface                  string           `yaml:"cni_iface,omitempty" json:"cni_iface,omitempty"`
-	CalicoInterfaceAutodetect string           `yaml:"calico_interface_autodetect,omitempty" json:"calico_interface_autodetect,omitempty"`
-	AutodetectCIDR            string           `yaml:"autodetect_cidr,omitempty" json:"autodetect_cidr,omitempty"`
+	CNIIface                  string           `yaml:"cni_iface,omitempty" json:"cni_iface,omitempty" jsonschema:"description=Interface name or regular expression used when calico_interface_autodetect is interface; surrounding whitespace is ignored and case is preserved"`
+	CalicoInterfaceAutodetect string           `yaml:"calico_interface_autodetect,omitempty" json:"calico_interface_autodetect,omitempty" jsonschema:"description=IPv4 node address autodetection mode; omitted defaults to first-found,enum=first-found,enum=interface,enum=cidr,default=first-found" jsonschema_validate:"oneof=first-found interface cidr"`
+	AutodetectCIDR            string           `yaml:"autodetect_cidr,omitempty" json:"autodetect_cidr,omitempty" jsonschema:"description=IPv4 CIDR used when calico_interface_autodetect is cidr; surrounding whitespace is ignored" jsonschema_validate:"cidrv4"`
 	EncapsulationType         string           `yaml:"encapsulation_type,omitempty" json:"encapsulation_type,omitempty"`
 	NATOutgoing               bool             `yaml:"nat_outgoing" json:"nat_outgoing"`
 	Modules                   CNIModulesConfig `yaml:"modules,omitempty" json:"modules,omitempty"`

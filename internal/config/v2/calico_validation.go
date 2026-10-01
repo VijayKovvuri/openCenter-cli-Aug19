@@ -25,7 +25,7 @@ func ResolveCalicoInterfaceAutodetect(config *CalicoConfig) (string, error) {
 	switch mode {
 	case "":
 		return CalicoInterfaceAutodetectFirstFound, nil
-	case CalicoInterfaceAutodetectFirstFound, "first_found":
+	case CalicoInterfaceAutodetectFirstFound:
 		return CalicoInterfaceAutodetectFirstFound, nil
 	case CalicoInterfaceAutodetectInterface:
 		if strings.TrimSpace(config.CNIIface) == "" {

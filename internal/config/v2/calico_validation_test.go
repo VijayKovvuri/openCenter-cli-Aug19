@@ -22,9 +22,9 @@ func TestResolveCalicoInterfaceAutodetect(t *testing.T) {
 			want: CalicoInterfaceAutodetectFirstFound,
 		},
 		{
-			name: "first found compatible spelling",
+			name: "normalized first found",
 			config: CalicoConfig{
-				CalicoInterfaceAutodetect: "first_found",
+				CalicoInterfaceAutodetect: " FIRST-FOUND ",
 			},
 			want: CalicoInterfaceAutodetectFirstFound,
 		},
@@ -149,6 +149,14 @@ func TestValidateReadinessCalicoInterfaceAutodetect(t *testing.T) {
 			},
 			path: "opencenter.cluster.kubernetes.network_plugin.calico.autodetect_cidr",
 		},
+		{
+			name: "invalid cidr",
+			set: func(config *CalicoConfig) {
+				config.CalicoInterfaceAutodetect = " CIDR "
+				config.AutodetectCIDR = "2001:db8::/64"
+			},
+			path: "opencenter.cluster.kubernetes.network_plugin.calico.autodetect_cidr",
+		},
 	}
 
 	for _, tt := range tests {
@@ -164,6 +172,39 @@ func TestValidateReadinessCalicoInterfaceAutodetect(t *testing.T) {
 				return
 			}
 			assertIssue(t, report, SeverityError, CategorySchema, tt.path)
+		})
+	}
+}
+
+func TestValidateSchemaAllowsNormalizedCalicoAutodetection(t *testing.T) {
+	tests := []struct {
+		name string
+		set  func(*CalicoConfig)
+	}{
+		{
+			name: "normalized first found ignores stale cidr",
+			set: func(config *CalicoConfig) {
+				config.CalicoInterfaceAutodetect = " FIRST-FOUND "
+				config.AutodetectCIDR = "not-a-cidr"
+			},
+		},
+		{
+			name: "normalized interface ignores stale cidr",
+			set: func(config *CalicoConfig) {
+				config.CalicoInterfaceAutodetect = " Interface "
+				config.CNIIface = " ens192 "
+				config.AutodetectCIDR = "not-a-cidr"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := validReadinessConfig(t, "openstack")
+			tt.set(config.OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico)
+			if err := NewValidator().ValidateSchema(config); err != nil {
+				t.Fatalf("ValidateSchema() error = %v", err)
+			}
 		})
 	}
 }

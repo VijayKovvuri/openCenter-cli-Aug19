@@ -1,7 +1,7 @@
 {{- /* Only render Calico GitOps manifests when install_method is "helm" (default) */}}
 {{- if and .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.Enabled (eq (.OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico.InstallMethod | default "helm") "helm") }}
 {{- $calico := .OpenCenter.Cluster.Kubernetes.NetworkPlugin.Calico }}
-{{- $autodetectMode := $calico.CalicoInterfaceAutodetect | default "first-found" | trim | lower }}
+{{- $autodetectMode := $calico.CalicoInterfaceAutodetect | trim | lower | default "first-found" }}
 installation:
   enabled: true
   kubernetesProvider: ""
@@ -14,12 +14,14 @@ installation:
         nodeSelector: all()
     nodeAddressAutodetectionV4:
       {{- if eq $autodetectMode "interface" }}
-      interface: "{{ $calico.CNIIface | default "" | trim | lower }}"
+      interface: "{{ $calico.CNIIface | default "" | trim }}"
       {{- else if eq $autodetectMode "cidr" }}
       cidrs:
-        - "{{ $calico.AutodetectCIDR | default "" | trim | lower }}"
-      {{- else }}
+        - "{{ $calico.AutodetectCIDR | default "" | trim }}"
+      {{- else if eq $autodetectMode "first-found" }}
       firstFound: true
+      {{- else }}
+      {{- fail (printf "unsupported calico_interface_autodetect mode %q; expected first-found, interface, or cidr" $autodetectMode) }}
       {{- end }}
     {{- if gt (.OpenCenter.Infrastructure.Compute.WorkerCountWindows | default 0) 0 }}
     windowsDataplane: HNS

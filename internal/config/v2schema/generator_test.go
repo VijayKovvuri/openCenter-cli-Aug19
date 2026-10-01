@@ -65,6 +65,20 @@ func TestGenerateValidationTagsForEditorHints(t *testing.T) {
 	}
 }
 
+func TestGenerateCalicoAutodetectionValidation(t *testing.T) {
+	schema := generatedSchemaMap(t)
+	calico := schemaAt(t, schema, "properties", "opencenter", "properties", "cluster", "properties", "kubernetes", "properties", "network_plugin", "properties", "calico", "properties")
+
+	mode := schemaAt(t, calico, "calico_interface_autodetect")
+	if got := stringSliceAt(t, mode, "enum"); !slices.Equal(got, []string{"first-found", "interface", "cidr"}) {
+		t.Fatalf("calico_interface_autodetect enum = %v", got)
+	}
+	cidr := schemaAt(t, calico, "autodetect_cidr")
+	if got := cidr["pattern"]; got != `^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$` {
+		t.Fatalf("autodetect_cidr pattern = %v", got)
+	}
+}
+
 func TestGenerateRejectsLegacyOpenCenterTalosShape(t *testing.T) {
 	schema := generatedSchemaMap(t)
 

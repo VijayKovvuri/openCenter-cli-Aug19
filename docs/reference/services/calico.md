@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-25
+last_updated: 2026-09-30
 id: service-calico
 title: "Calico"
 sidebar_label: Calico
@@ -32,6 +32,22 @@ opencenter:
 | `namespace` | `calico-system` | `NewDefaultServiceConfig` |
 | `kube_api_server` | empty | `CalicoConfig.KubeAPIServer` |
 | common fields | — | `BaseConfig`: `adoption_mode`, `source`, `image`, and `address_pool` |
+
+### Node address autodetection
+
+`opencenter.cluster.kubernetes.network_plugin.calico.calico_interface_autodetect`
+accepts `first-found`, `interface`, or `cidr`. An omitted or blank value defaults
+to `first-found`.
+
+| Mode | Required field | Generated Calico value |
+|------|----------------|------------------------|
+| `first-found` | none | `firstFound: true` |
+| `interface` | `cni_iface` | `interface: <cni_iface>` |
+| `cidr` | `autodetect_cidr` (IPv4 CIDR) | `cidrs: [<autodetect_cidr>]` |
+
+Surrounding whitespace is removed from the selected dependent field. Interface
+names and expressions retain their original case. Fields belonging to inactive
+modes are ignored and are not rendered.
 
 ## Runtime behavior
 
