@@ -236,6 +236,9 @@ func TestBootstrapServiceOpenStackProvisionInfrastructureHonorsSavedState(t *tes
 					}
 				}
 			}
+			if len(args) > 0 && args[0] == "output" {
+				return nil, errors.New("unexpected OpenTofu output command: test fixture requires cfg.OpenTofu.Path = tofu")
+			}
 			return nil, nil
 		},
 	}
@@ -251,6 +254,7 @@ func TestBootstrapServiceOpenStackProvisionInfrastructureHonorsSavedState(t *tes
 	}
 
 	cfg := mustNewClusterTestConfig(clusterName, "openstack")
+	cfg.OpenTofu.Path = "tofu"
 	cfg.OpenCenter.Meta.Organization = organization
 	cfg.OpenCenter.GitOps.Repository.LocalDir = filepath.Join(tmpDir, "repo")
 	cfg.OpenCenter.Infrastructure.Cloud.OpenStack.AuthURL = "https://keystone.example.com/v3"

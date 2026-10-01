@@ -31,6 +31,7 @@ import (
 	"github.com/opencenter-cloud/opencenter-cli/internal/util/fs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // setupTestManager creates a test secrets manager with temporary directories
@@ -153,10 +154,25 @@ func TestExtractSecretsFromConfig(t *testing.T) {
 		assert.Equal(t, "AKIAIOSFODNN7EXAMPLE", secretsMap["cert-manager"]["aws_access_key"])
 		assert.Equal(t, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", secretsMap["cert-manager"]["aws_secret_access_key"])
 
-		// Verify Loki secrets
+		// Loki is materialized as a final Helm values Secret. Validate the
+		// payload consumed by the HelmRelease rather than the obsolete flat keys.
 		assert.Contains(t, secretsMap, "loki")
-		assert.Equal(t, "AKIAIOSFODNN7EXAMPLE", secretsMap["loki"]["s3_access_key_id"])
-		assert.Equal(t, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", secretsMap["loki"]["s3_secret_access_key"])
+		require.Len(t, secretsMap["loki"], 1)
+		lokiValuesRaw, ok := secretsMap["loki"]["values.yaml"].(string)
+		require.True(t, ok, "Loki payload must contain string values.yaml")
+		var lokiValues struct {
+			Loki struct {
+				Storage struct {
+					S3 struct {
+						AccessKeyID     string `yaml:"accessKeyId"`
+						SecretAccessKey string `yaml:"secretAccessKey"`
+					} `yaml:"s3"`
+				} `yaml:"storage"`
+			} `yaml:"loki"`
+		}
+		require.NoError(t, yaml.Unmarshal([]byte(lokiValuesRaw), &lokiValues))
+		assert.Equal(t, "AKIAIOSFODNN7EXAMPLE", lokiValues.Loki.Storage.S3.AccessKeyID)
+		assert.Equal(t, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", lokiValues.Loki.Storage.S3.SecretAccessKey)
 
 		// Keycloak is no longer harvested: its admin/client secrets are not
 		// consumed by any manifest (admin via realm-import, DB via postgres-operator),

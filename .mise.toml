@@ -424,6 +424,7 @@ test-remediation-race = "go test -race ./internal/secrets -run 'TestSyncSecretsS
 
 # Test the documentation generator and the repository's documentation contracts.
 test-docs = [
+  "mise run test-docs-scripts",
   "go test -tags tools ./cmd/docs -count=1",
   "mise run test-docs-idempotency",
   "go test ./cmd -run '^TestDocsDoNotUseRemovedGACommands$' -count=1",
@@ -674,6 +675,9 @@ if [ "${FIRST}" != "${SECOND}" ]; then
 fi
 echo "Documentation generation is idempotent: ${SECOND}"
 '''
+
+# Run focused unit tests for every documentation policy/helper script.
+test-docs-scripts = "python3 -m unittest discover -s hack/scripts -p 'test_*.py'"
 
 # Check local Markdown links without accessing the network.
 test-docs-links = "python3 hack/scripts/check_doc_links.py"

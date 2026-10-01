@@ -32,8 +32,25 @@ jobs:
           echo "${install_dir}" >> "${GITHUB_PATH}"
           "${install_dir}/sops" --version
 
-      - name: Run unit tests with race detector
-        run: go test ./internal/... ./cmd/... -count=1 -race
+      - name: Run cluster and bootstrap tests with race detector
+        run: go test ./internal/cluster/... -count=1 -race
+
+      - name: Run secrets and artifact tests with race detector
+        run: go test ./internal/secrets/... ./internal/secretartifacts/... -count=1 -race
+
+      - name: Run remaining internal tests with race detector
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(
+            go list ./internal/... \
+              | grep -Ev '/internal/(cluster|secrets|secretartifacts)(/|$)'
+          )
+          ((${#packages[@]} > 0))
+          go test "${packages[@]}" -count=1 -race
+
+      - name: Run command tests with race detector
+        run: go test ./cmd/... -count=1 -race
 
       - name: Run go vet
         run: go vet ./...
