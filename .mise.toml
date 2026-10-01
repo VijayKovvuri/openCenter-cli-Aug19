@@ -1,6 +1,5 @@
 [tools]
-golang = "1.26.6"
-golangci-lint = "2.11.4"
+golangci-lint = "2.14.0"
 kubectl = "latest"
 kind = "latest"
 helm = "latest"
@@ -8,6 +7,7 @@ sops = "3.13.3"
 pre-commit = "latest"
 "go:golang.org/x/vuln/cmd/govulncheck" = "latest"
 "aqua:gitleaks/gitleaks" = "latest"
+go = "1.27.1"
 
 [env]
 # Override the default config directory via environment for reproducible tests
